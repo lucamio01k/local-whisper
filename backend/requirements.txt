@@ -1,0 +1,13 @@
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.9
+faster-whisper>=1.0.3
+pyannote.audio>=3.1.1
+yt-dlp>=2024.1.0
+torch>=2.1.0
+torchaudio>=2.1.0
+pydantic>=2.5.0
+aiofiles>=23.2.1
+httpx>=0.26.0
+huggingface_hub>=0.20.0,<1.0
+ctranslate2>=4.0.0
