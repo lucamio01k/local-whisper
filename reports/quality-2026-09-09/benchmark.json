@@ -1,0 +1,56 @@
+[
+  {
+    "name": "balanced",
+    "seconds": 37.069,
+    "returncode": 0,
+    "options": [
+      "-bs",
+      "3"
+    ],
+    "segments": 180,
+    "words": 1271,
+    "adjacent_duplicate_segments": 14,
+    "gestire_repetitions": 9
+  },
+  {
+    "name": "fast",
+    "seconds": 30.26,
+    "returncode": 0,
+    "options": [
+      "-bs",
+      "1"
+    ],
+    "segments": 161,
+    "words": 1199,
+    "adjacent_duplicate_segments": 2,
+    "gestire_repetitions": 0
+  },
+  {
+    "name": "quality",
+    "seconds": 37.769,
+    "returncode": 0,
+    "options": [
+      "-bs",
+      "5"
+    ],
+    "segments": 138,
+    "words": 1149,
+    "adjacent_duplicate_segments": 8,
+    "gestire_repetitions": 0
+  },
+  {
+    "name": "glossary",
+    "seconds": 34.867,
+    "returncode": 0,
+    "options": [
+      "-bs",
+      "3",
+      "--prompt",
+      "Terminologia: EMV, PSP, acquirer, acquiring, issuer, POS, tap, Nexi, OpenMove, Arriva, GTFS, Sadem, AEP, schema transit, check-out, multipasseggero."
+    ],
+    "segments": 90,
+    "words": 1262,
+    "adjacent_duplicate_segments": 0,
+    "gestire_repetitions": 0
+  }
+]

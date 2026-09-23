@@ -84,6 +84,11 @@ export default function SettingsPage() {
         <p className="text-sm text-gray-500 mt-1">Configurazione locale — nessun dato inviato a server esterni.</p>
       </div>
 
+      <div className="card p-6 space-y-3">
+        <label className="block text-sm">Glossario predefinito<textarea className="input w-full" maxLength={4000} value={cfg.glossary || ''} onChange={e => setCfg({ ...cfg, glossary: e.target.value })} /></label>
+        <label className="block text-sm">Precisione diarizzazione<select className="input w-full" value={cfg.diarization_precision || 'segments'} onChange={e => setCfg({ ...cfg, diarization_precision: e.target.value })}><option value="segments">Per segmento</option><option value="words">Per parola (sperimentale)</option></select></label>
+        <p className="text-xs text-gray-400">Glossario suggerito al riconoscimento, senza sostituzioni automatiche.</p>
+      </div>
       {/* HuggingFace token */}
       <div className="card p-6 space-y-4">
         <div>

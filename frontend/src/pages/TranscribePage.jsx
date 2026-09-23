@@ -5,6 +5,8 @@ import {
   ArrowLeft, Pause, Play, Square,
 } from 'lucide-react'
 import FileUpload from '../components/FileUpload'
+import DiarizationPanel from '../components/DiarizationPanel'
+import { speakerErrors, diarizationRequest } from '../lib/diarizationOptions'
 import ModelSelector from '../components/ModelSelector'
 import AudioPlayer from '../components/AudioPlayer'
 import TranscriptView from '../components/TranscriptView'
@@ -120,15 +122,22 @@ export default function TranscribePage() {
   const [performanceProfile, setPerformanceProfile] = useState('balanced')
   const [diarize, setDiarize] = useState(true)
   const [expectedSpeakers, setExpectedSpeakers] = useState('')
+  const [speakerMode, setSpeakerMode] = useState('auto')
+  const [tokenConfigured, setTokenConfigured] = useState(null)
   const [diarizationMode, setDiarizationMode] = useState('conservative')
   const [diarizationStart, setDiarizationStart] = useState('auto')
   const [diarizationDevice, setDiarizationDevice] = useState('auto')
   const [showOptions, setShowOptions] = useState(false)
+  const [glossary, setGlossary] = useState('')
+  const [diarizationPrecision, setDiarizationPrecision] = useState('segments')
+  const [minSpeakers, setMinSpeakers] = useState('')
+  const [maxSpeakers, setMaxSpeakers] = useState('')
 
   const [job, setJob] = useState(null) // current job state
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const [audioPlaying, setAudioPlaying] = useState(false)
   const playerRef = useRef(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [nowTick, setNowTick] = useState(Date.now())
@@ -137,12 +146,15 @@ export default function TranscribePage() {
   // Load diarization default from config
   useEffect(() => {
     fetchConfig().then(cfg => {
+      setGlossary(cfg.glossary || '')
+      setDiarizationPrecision(cfg.diarization_precision || 'segments')
       setModel(cfg.default_model || 'small')
       setTranscriptionBackend(cfg.transcription_backend || 'faster_whisper')
       setPerformanceProfile(cfg.performance_profile || 'balanced')
-      setDiarize(cfg.diarization_enabled ?? true)
+      setDiarize((cfg.diarization_enabled ?? true) && cfg.diarization_start !== 'off')
+      setTokenConfigured(Boolean(cfg.hf_token_set))
       setDiarizationMode(cfg.diarization_mode || 'conservative')
-      setDiarizationStart(cfg.diarization_start || (cfg.diarization_enabled ? 'auto' : 'off'))
+      setDiarizationStart(cfg.diarization_start === 'after' ? 'after' : 'auto')
       setDiarizationDevice(cfg.diarization_device || 'auto')
     }).catch(() => {})
   }, [])
@@ -183,7 +195,9 @@ export default function TranscribePage() {
     return () => clearInterval(timer)
   }, [job?.id, job?.status])
 
-  const canStart = (file || ytUrl) && model && (transcriptionBackend === 'whisper_cpp' || modelReady)
+  const diarizationOptions = { enabled: diarize, speakerMode, expectedSpeakers, minSpeakers, maxSpeakers, start: diarizationStart }
+  const diarizationErrors = speakerErrors(diarizationOptions)
+  const canStart = !Object.keys(diarizationErrors).length && (file || ytUrl) && model && (transcriptionBackend === 'whisper_cpp' || modelReady)
 
   async function handleStart() {
     if (!canStart) return
@@ -192,16 +206,15 @@ export default function TranscribePage() {
     setJob(null)
     try {
       const { job_id } = await startTranscription({
+        glossary, diarizationPrecision,
+        ...diarizationRequest(diarizationOptions),
         file: file || undefined,
         youtubeUrl: ytUrl || undefined,
         modelName: model,
         language,
         performanceProfile,
         transcriptionBackend,
-        diarize,
-        expectedSpeakers: expectedSpeakers ? Number(expectedSpeakers) : undefined,
         diarizationMode,
-        diarizationStart,
         diarizationDevice,
       })
 
@@ -269,7 +282,7 @@ export default function TranscribePage() {
   const phaseProgress = getPhaseProgress(job)
   const backendLabel = BACKEND_LABELS[job?.transcription_backend] || BACKEND_LABELS[transcriptionBackend] || 'Backend'
   const profileLabel = PROFILE_LABELS[job?.performance_profile] || PROFILE_LABELS[performanceProfile] || 'Profilo'
-  const diarizationStartLabel = DIARIZATION_START_LABELS[job?.diarization_start] || DIARIZATION_START_LABELS[diarizationStart] || 'Automatica'
+  const diarizationStartLabel = DIARIZATION_START_LABELS[job?.diarization_start] || DIARIZATION_START_LABELS[diarize ? diarizationStart : 'off'] || 'Automatica'
   const diarizationDeviceLabel = DIARIZATION_DEVICE_LABELS[job?.diarization_device] || DIARIZATION_DEVICE_LABELS[diarizationDevice] || 'Auto'
 
   return (
@@ -304,137 +317,57 @@ export default function TranscribePage() {
         {/* Model */}
         <div className="card p-5">
           <ModelSelector
+            backend={transcriptionBackend}
             selected={model}
             onChange={setModel}
             onSelectedStatusChange={setModelReady}
           />
         </div>
 
-        {/* Advanced options */}
+        <DiarizationPanel
+          enabled={diarize} onEnabledChange={setDiarize}
+          speakerMode={speakerMode} onSpeakerModeChange={setSpeakerMode}
+          expectedSpeakers={expectedSpeakers} onExpectedSpeakersChange={setExpectedSpeakers}
+          minSpeakers={minSpeakers} onMinSpeakersChange={setMinSpeakers}
+          maxSpeakers={maxSpeakers} onMaxSpeakersChange={setMaxSpeakers}
+          start={diarizationStart} onStartChange={setDiarizationStart}
+          precision={diarizationPrecision} onPrecisionChange={setDiarizationPrecision}
+          device={diarizationDevice} onDeviceChange={setDiarizationDevice}
+          tokenConfigured={tokenConfigured} archived={Boolean(preloadJobId)} errors={diarizationErrors}
+        />
+
         <div className="card overflow-hidden">
-          <button
-            onClick={() => setShowOptions(v => !v)}
-            className="w-full flex items-center justify-between px-5 py-3 text-sm font-medium text-gray-400 hover:text-gray-200 transition-colors"
-          >
-            Opzioni avanzate
+          <button type="button" onClick={() => setShowOptions(v => !v)}
+            aria-expanded={showOptions} aria-controls="transcription-options"
+            className="w-full flex items-center justify-between px-5 py-3 text-sm font-medium text-gray-400 hover:text-gray-200 transition-colors">
+            Opzioni di trascrizione
             {showOptions ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
           </button>
-          {showOptions && (
-            <div className="px-5 pb-5 space-y-4 border-t border-white/5 pt-4">
-              <div>
-                <label className="label">Lingua (opzionale)</label>
-                <select
-                  className="input"
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                >
-                  {LANGUAGES.map(l => (
-                    <option key={l.code} value={l.code}>{l.label}</option>
-                  ))}
-</select>
-</div>
-
-<div>
-<label className="label">Backend trascrizione</label>
-<select
-className="input"
-value={transcriptionBackend}
-onChange={(e) => setTranscriptionBackend(e.target.value)}
->
-<option value="faster_whisper">faster-whisper</option>
-<option value="whisper_cpp">whisper.cpp</option>
-</select>
-</div>
-
-<div>
-<label className="label">Profilo prestazioni</label>
-                <select
-                  className="input"
-                  value={performanceProfile}
-                  onChange={(e) => setPerformanceProfile(e.target.value)}
-                >
-                  <option value="fast">Veloce</option>
-                  <option value="balanced">Bilanciato</option>
-                  <option value="quality">Qualità</option>
-                </select>
-              </div>
-
-              <label className="flex items-center justify-between cursor-pointer">
-                <div>
-                  <p className="text-sm text-gray-300">Diarizzazione speaker</p>
-                  <p className="text-xs text-gray-500 mt-0.5">Richiede token HuggingFace</p>
-                </div>
-                <div
-                    onClick={() => setDiarize(v => {
-                      const enabled = !v
-                      setDiarizationStart(enabled ? 'auto' : 'off')
-                      return enabled
-                    })}
-                  className={`relative w-10 h-5 rounded-full transition-colors ${diarize ? 'bg-brand-600' : 'bg-gray-700'}`}
-                >
-                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${diarize ? 'left-5' : 'left-0.5'}`} />
-                  </div>
-                </label>
-
-                <div>
-                  <label className="label">Avvio diarizzazione</label>
-                  <select
-                    className="input"
-                    value={diarizationStart}
-                    onChange={(e) => {
-                      setDiarizationStart(e.target.value)
-                      setDiarize(e.target.value !== 'off')
-                    }}
-                  >
-                    <option value="auto">Automatica dopo trascrizione</option>
-                    <option value="after">Dopo, manuale</option>
-                    <option value="off">Spenta</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="label">Device diarizzazione</label>
-                  <select
-                    className="input"
-                    value={diarizationDevice}
-                    onChange={(e) => setDiarizationDevice(e.target.value)}
-                    disabled={!diarize}
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="cpu">CPU più controllabile</option>
-                    <option value="mps">MPS Apple GPU</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="label">Numero speaker attesi</label>
-                  <select
-                  className="input"
-                  value={expectedSpeakers}
-                  onChange={(e) => setExpectedSpeakers(e.target.value)}
-                  disabled={!diarize}
-                >
-                  <option value="">Auto</option>
-                  {[1, 2, 3, 4, 5, 6].map(n => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="label">Modalità diarizzazione</label>
-                <select
-                  className="input"
-                  value={diarizationMode}
-                  onChange={(e) => setDiarizationMode(e.target.value)}
-                  disabled={!diarize}
-                >
-                  <option value="conservative">Conservativa</option>
-                  <option value="balanced">Bilanciata</option>
-                </select>
-              </div>
+          <div id="transcription-options" hidden={!showOptions} className="px-5 pb-5 space-y-4 border-t border-white/5 pt-4">
+            <div>
+              <label htmlFor="transcription-language" className="label">Lingua (opzionale)</label>
+              <select id="transcription-language" className="input" value={language} onChange={e => setLanguage(e.target.value)}>
+                {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
+              </select>
             </div>
-          )}
+            <div>
+              <label htmlFor="transcription-backend" className="label">Backend trascrizione</label>
+              <select id="transcription-backend" className="input" value={transcriptionBackend} onChange={e => setTranscriptionBackend(e.target.value)}>
+                <option value="faster_whisper">faster-whisper</option><option value="whisper_cpp">whisper.cpp</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="transcription-profile" className="label">Profilo prestazioni</label>
+              <select id="transcription-profile" className="input" value={performanceProfile} onChange={e => setPerformanceProfile(e.target.value)}>
+                <option value="fast">Veloce</option><option value="balanced">Bilanciato</option><option value="quality">Qualità</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="transcription-glossary" className="label">Glossario registrazione</label>
+              <textarea id="transcription-glossary" className="input w-full" maxLength={4000} placeholder="EMV, PSP, acquirer, issuer…" value={glossary} onChange={e => setGlossary(e.target.value)} />
+              <p className="text-xs text-gray-500 mt-1">Suggerisce termini al modello, senza sostituzioni automatiche.</p>
+            </div>
+          </div>
         </div>
 
         {/* Start button */}
@@ -590,7 +523,7 @@ onChange={(e) => setTranscriptionBackend(e.target.value)}
           <>
             {/* Audio player */}
             {job.audio_url && (
-              <AudioPlayer ref={playerRef} src={audioUrl(job.id)} />
+              <AudioPlayer key={job.id} ref={playerRef} src={audioUrl(job.id)} onPlayingChange={setAudioPlaying} />
             )}
 
             {/* Metadata */}
@@ -622,6 +555,9 @@ onChange={(e) => setTranscriptionBackend(e.target.value)}
               jobId={job.id}
               segments={job.segments}
               currentTime={currentTime}
+              playing={audioPlaying}
+              onPause={() => playerRef.current?.pause()}
+              onListen={job.audio_url ? (start, end) => playerRef.current?.playRange(start, end) : undefined}
               onSeek={job.audio_url ? (t) => playerRef.current?.seekTo(t) : undefined}
               onJobUpdate={(data) => setJob({ ...data, id: job.id })}
             />

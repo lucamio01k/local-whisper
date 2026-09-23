@@ -1,11 +1,11 @@
+import ReviewPanel from './ReviewPanel'
 import { useState, useRef, useEffect } from 'react'
-import { Search, Edit2, Check, X, GitMerge, Loader, RefreshCw, AlertTriangle } from 'lucide-react'
-import { fetchSpeakerSuggestions, rediarizeJob, subscribeJobEvents, updateSpeakers } from '../api'
+import { Play, Pause, Search, Edit2, Check, X, GitMerge, Loader, RefreshCw, AlertTriangle } from 'lucide-react'
+import { getJob, fetchSpeakerSuggestions, rediarizeJob, subscribeJobEvents, updateSpeakers } from '../api'
 
 function formatTs(s) {
-  const m = Math.floor(s / 60)
-  const sec = Math.floor(s % 60)
-  return `${m}:${String(sec).padStart(2, '0')}`
+  const ms = Math.max(0, Math.round(s * 1000))
+  return `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}.${String(ms % 1000).padStart(3, '0')}`
 }
 
 function formatDuration(s) {
@@ -39,8 +39,10 @@ const speakerColor = (() => {
   }
 })()
 
-export default function TranscriptView({ jobId, segments, onSeek, currentTime, onJobUpdate }) {
+export default function TranscriptView({ jobId, segments, onSeek, onListen, currentTime, playing = false, onPause, onJobUpdate }) {
   const [search, setSearch] = useState('')
+  const [saveError, setSaveError] = useState('')
+  const [version, setVersion] = useState(null)
   const [editingSpeaker, setEditingSpeaker] = useState(null) // speaker name being edited
   const [speakerDraft, setSpeakerDraft] = useState('')
   const [localSegments, setLocalSegments] = useState(segments || [])
@@ -53,8 +55,10 @@ export default function TranscriptView({ jobId, segments, onSeek, currentTime, o
   const [suggestions, setSuggestions] = useState([])
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const activeRef = useRef(null)
+  const listRef = useRef(null)
+  const [followAudio, setFollowAudio] = useState(false)
 
-  useEffect(() => { setLocalSegments(segments || []) }, [segments])
+  useEffect(() => { setLocalSegments(segments || []); getJob(jobId).then(j => setVersion(j.version)).catch(() => {}) }, [segments, jobId])
 
   // Highlight active segment
   const activeIdx = localSegments.findIndex(
@@ -62,37 +66,53 @@ export default function TranscriptView({ jobId, segments, onSeek, currentTime, o
   )
 
   useEffect(() => {
-    if (activeIdx >= 0 && activeRef.current) {
-      activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    if (!followAudio || !playing || !activeRef.current || !listRef.current) return
+    // Scroll only the transcript list: never move the document or the player.
+    const list = listRef.current
+    const row = activeRef.current.getBoundingClientRect()
+    const box = list.getBoundingClientRect()
+    if (row.top < box.top || row.bottom > box.bottom) {
+      list.scrollTop += row.top - box.top
     }
-  }, [activeIdx])
+  }, [activeIdx, followAudio, playing])
+
+  useEffect(() => { setFollowAudio(false) }, [jobId])
+
 
   async function commitSpeakerRename(oldName) {
     if (!speakerDraft.trim() || speakerDraft === oldName) {
       setEditingSpeaker(null)
       return
     }
+    const previous = localSegments
+    setSaveError('')
     const newName = speakerDraft.trim()
     // Optimistic update
     setLocalSegments(segs => segs.map(s => s.speaker === oldName ? { ...s, speaker: newName } : s))
     setEditingSpeaker(null)
     try {
-      await updateSpeakers(jobId, { [oldName]: newName })
+      const result = await updateSpeakers(jobId, { [oldName]: newName }, version)
+      setVersion(result.version)
     } catch (e) {
-      console.error(e)
+      setLocalSegments(previous)
+      setSaveError(e.message)
     }
   }
 
   async function commitSpeakerMerge(source, target) {
     if (!source || !target || source === target) return
+    const previous = localSegments
+    setSaveError('')
     setLocalSegments(segs => segs.map(s => s.speaker === source ? { ...s, speaker: target } : s))
     setSuggestions(items => items.filter(item => item.source !== source))
     setMergeSource('')
     setMergeTarget('')
     try {
-      await updateSpeakers(jobId, { [source]: target })
+      const result = await updateSpeakers(jobId, { [source]: target }, version)
+      setVersion(result.version)
     } catch (e) {
-      console.error(e)
+      setLocalSegments(previous)
+      setSaveError(e.message)
     }
   }
 
@@ -104,7 +124,7 @@ export default function TranscriptView({ jobId, segments, onSeek, currentTime, o
       await rediarizeJob(
         jobId,
         rediarizeSpeakers ? Number(rediarizeSpeakers) : undefined,
-        { diarization_mode: rediarizeMode },
+        { diarization_mode: rediarizeMode, version },
       )
       const unsub = subscribeJobEvents(jobId, (data) => {
         setRediarizeMsg(data.message || 'Diarizzazione in corso...')
@@ -315,8 +335,14 @@ export default function TranscriptView({ jobId, segments, onSeek, currentTime, o
         </div>
       )}
 
+      {saveError && <p role="alert" className="text-red-400 text-sm">{saveError}</p>}
+      <ReviewPanel jobId={jobId} onSeek={onSeek} onListen={onListen} onJobUpdate={data => { setLocalSegments(data.segments || []); setVersion(data.version); onJobUpdate?.(data) }} />
+      {onSeek && <label className="flex items-center gap-2 text-xs text-gray-400">
+        <input type="checkbox" className="accent-brand-500" checked={followAudio} onChange={e => setFollowAudio(e.target.checked)} />
+        Segui audio nel testo
+      </label>}
       {/* Segments */}
-      <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-1">
+      <div ref={listRef} onWheel={() => setFollowAudio(false)} onTouchStart={() => setFollowAudio(false)} onKeyDown={e => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(e.key)) setFollowAudio(false) }} className="space-y-1 max-h-[60vh] overflow-y-auto pr-1">
         {localSegments
           .map((seg, index) => ({ seg, index }))
           .filter(({ seg }) => !search || seg.text.toLowerCase().includes(search.toLowerCase()))
@@ -326,7 +352,7 @@ export default function TranscriptView({ jobId, segments, onSeek, currentTime, o
               <div
                 key={seg.id ?? index}
                 ref={isActive ? activeRef : null}
-                onClick={() => onSeek?.(seg.start)}
+                onClick={() => isActive && playing ? onPause?.() : onSeek?.(seg.start)}
                 className={`flex gap-3 p-2.5 rounded-lg cursor-pointer transition-all group ${
                   isActive
                     ? 'bg-brand-900/30 border border-brand-500/30'
@@ -334,15 +360,21 @@ export default function TranscriptView({ jobId, segments, onSeek, currentTime, o
                 }`}
               >
                 {/* Timestamp */}
-                <span className="text-xs text-gray-500 font-mono mt-0.5 flex-shrink-0 w-12">
-                  {formatTs(seg.start)}
-                </span>
+                <div className="text-xs text-gray-500 font-mono mt-0.5 flex-shrink-0 w-20">
+                  <span>{formatTs(seg.start)}</span>
+                  {onSeek && <button type="button" className="mt-2 flex items-center gap-1 text-brand-300 hover:text-brand-200 rounded focus-visible:outline focus-visible:outline-2"
+                    aria-label={isActive && playing ? 'Pausa audio del segmento' : `Ascolta segmento ${formatTs(seg.start)}`}
+                    onClick={e => { e.stopPropagation(); if (isActive && playing) onPause?.(); else onSeek(seg.start) }}>
+                    {isActive && playing ? <Pause size={14} /> : <Play size={14} />}
+                    {isActive && playing ? 'Pausa' : 'Ascolta'}
+                  </button>}
+                </div>
 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
-                  {seg.speaker && (
+                  {true && (
                     <span className={`text-xs font-semibold mb-0.5 block ${speakerColor(seg.speaker)}`}>
-                      {seg.speaker}
+                      {seg.speaker || 'Non determinato'}
                     </span>
                   )}
                   <p className="text-sm text-gray-300 leading-relaxed">

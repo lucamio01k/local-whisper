@@ -1,0 +1,1803 @@
+{
+	"systeminfo": "WHISPER : COREML = 0 | OPENVINO = 0 | MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ",
+	"model": {
+		"type": "large",
+		"multilingual": true,
+		"vocab": 51866,
+		"audio": {
+			"ctx": 1500,
+			"state": 1280,
+			"head": 20,
+			"layer": 32
+		},
+		"text": {
+			"ctx": 448,
+			"state": 1280,
+			"head": 20,
+			"layer": 4
+		},
+		"mels": 128,
+		"ftype": 1
+	},
+	"params": {
+		"model": "/Users/lucamiotti/scripts/_luca/local-whisper/models_cache/whisper.cpp/ggml-large-v3-turbo.bin",
+		"language": "it",
+		"translate": false
+	},
+	"result": {
+		"language": "it"
+	},
+	"transcription": [
+		{
+			"timestamps": {
+				"from": "00:00:00,000",
+				"to": "00:00:10,940"
+			},
+			"offsets": {
+				"from": 0,
+				"to": 10940
+			},
+			"text": " quindi il conto corrente su cui sono collegati tutti i terminali questo è l'acquiring"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:10,940",
+				"to": "00:00:19,740"
+			},
+			"offsets": {
+				"from": 10940,
+				"to": 19740
+			},
+			"text": " quindi tutti i soldi che alla fine arriveranno lì e di solito è la stessa società che fa PSP"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:19,740",
+				"to": "00:00:28,360"
+			},
+			"offsets": {
+				"from": 19740,
+				"to": 28360
+			},
+			"text": " Payment Service Provider perché il PSP fa da raccoglitore di tutti i tab, di tutte le carte,"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:28,360",
+				"to": "00:00:35,740"
+			},
+			"offsets": {
+				"from": 28360,
+				"to": 35740
+			},
+			"text": " di tutti i circuiti e da convogliatore verso l'issuer della carta, l'embertitore delle carte"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:35,740",
+				"to": "00:00:42,760"
+			},
+			"offsets": {
+				"from": 35740,
+				"to": 42760
+			},
+			"text": " quindi questo è il servizio PSP e c'è anche delle slides su questo, va tanto lui queste cose le sa"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:42,760",
+				"to": "00:00:55,600"
+			},
+			"offsets": {
+				"from": 42760,
+				"to": 55600
+			},
+			"text": " tutto esatto, tutta l'architettura quindi è fatta che da un lato c'è il PSP che Nexip ad acqua e la PSP per esempio"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:55,600",
+				"to": "00:01:02,980"
+			},
+			"offsets": {
+				"from": 55600,
+				"to": 62980
+			},
+			"text": " fa tutto, Pay probabilmente pure, non so se appoggi però hai due servizi separati"
+		},
+		{
+			"timestamps": {
+				"from": "00:01:02,980",
+				"to": "00:01:12,360"
+			},
+			"offsets": {
+				"from": 62980,
+				"to": 72360
+			},
+			"text": " da una parte di house tu sei il negozio, noi siamo un negozio con vari post che sono i bus che ci hanno"
+		},
+		{
+			"timestamps": {
+				"from": "00:01:12,360",
+				"to": "00:01:19,740"
+			},
+			"offsets": {
+				"from": 72360,
+				"to": 79740
+			},
+			"text": " che sono collegati a un conto che ti fa il servizio da prelievo di soldi e buttare soldi da dentro ma prima di questo c'è il PSP che sta a motte e manda, prende tutti i tab delle carte e intanto li manda in certificazione, in autorizzazione quindi chiede l'autorizzazione ai circuiti quindi il PSP chiede a tutti i circuiti di"
+		},
+		{
+			"timestamps": {
+				"from": "00:01:19,740",
+				"to": "00:01:29,220"
+			},
+			"offsets": {
+				"from": 79740,
+				"to": 89220
+			},
+			"text": " da prelievo di soldi e buttare soldi addentro, ma prima di questo c'è il PSP che sta a motte e manda,"
+		},
+		{
+			"timestamps": {
+				"from": "00:01:29,220",
+				"to": "00:01:36,420"
+			},
+			"offsets": {
+				"from": 89220,
+				"to": 96420
+			},
+			"text": " prende tutti i tapp delle carte ed intanto li manda in certificazione, in autorizzazione,"
+		},
+		{
+			"timestamps": {
+				"from": "00:01:36,420",
+				"to": "00:01:41,280"
+			},
+			"offsets": {
+				"from": 96420,
+				"to": 101280
+			},
+			"text": " quindi chiede l'autorizzazione ai circuiti, quindi il PSP chiede a tutti i circuiti di"
+		},
+		{
+			"timestamps": {
+				"from": "00:01:42,600",
+				"to": "00:01:49,320"
+			},
+			"offsets": {
+				"from": 102600,
+				"to": 109320
+			},
+			"text": " autorizzare queste transazioni, quindi il PSP chiede alla carta Mastercard, benissimo, alla Mastercard,"
+		},
+		{
+			"timestamps": {
+				"from": "00:01:49,320",
+				"to": "00:01:56,400"
+			},
+			"offsets": {
+				"from": 109320,
+				"to": 116400
+			},
+			"text": " a Visa, Amex, tutte le varie carte, ai circuiti chiede di autorizzare, però la catena non finisce lì"
+		},
+		{
+			"timestamps": {
+				"from": "00:01:56,400",
+				"to": "00:02:05,040"
+			},
+			"offsets": {
+				"from": 116400,
+				"to": 125040
+			},
+			"text": " perché poi i circuiti vanno ad arrivare fino alla carta emessa dalla banca of Japan del tizio in Giappone,"
+		},
+		{
+			"timestamps": {
+				"from": "00:02:05,040",
+				"to": "00:02:13,260"
+			},
+			"offsets": {
+				"from": 125040,
+				"to": 133260
+			},
+			"text": " proprio conto corrente del singolo là dentro, l'autorizzazione è una cosa, ma poi c'è l'addedito,"
+		},
+		{
+			"timestamps": {
+				"from": "00:02:13,260",
+				"to": "00:02:21,780"
+			},
+			"offsets": {
+				"from": 133260,
+				"to": 141780
+			},
+			"text": " prima si autorizza e poi ci sarà l'addedito, tra l'altro anche dopo una settimana, perché i tempi sono diversi,"
+		},
+		{
+			"timestamps": {
+				"from": "00:02:21,780",
+				"to": "00:02:27,840"
+			},
+			"offsets": {
+				"from": 141780,
+				"to": 147840
+			},
+			"text": " diversi in base alla banca, esatto, quindi tu quando dici autorizzato, autorizzato vuol dire che il circuito ha"
+		},
+		{
+			"timestamps": {
+				"from": "00:02:27,840",
+				"to": "00:02:36,480"
+			},
+			"offsets": {
+				"from": 147840,
+				"to": 156480
+			},
+			"text": " autorizzato la transazione, è una cosa, sei una botte di ferro che l'ha autorizzata, quindi ha fatto tutti i suoi controlli,"
+		},
+		{
+			"timestamps": {
+				"from": "00:02:36,480",
+				"to": "00:02:51,300"
+			},
+			"offsets": {
+				"from": 156480,
+				"to": 171300
+			},
+			"text": " ha visto capienza, ma ancora non ha preso i soldi materialmente dal conto, lo scarico, l'addedito vero sul conto è un altro momento ancora,"
+		},
+		{
+			"timestamps": {
+				"from": "00:02:51,300",
+				"to": "00:02:59,940"
+			},
+			"offsets": {
+				"from": 171300,
+				"to": 179940
+			},
+			"text": " perché lui deve poi arrivare al conto corrente del verizio che ha tappato in Sri Lanka, dove il cazzo sta a lui,"
+		},
+		{
+			"timestamps": {
+				"from": "00:02:59,940",
+				"to": "00:03:10,980"
+			},
+			"offsets": {
+				"from": 179940,
+				"to": 190980
+			},
+			"text": " che ha viaggiato a Firenze o a Milano e cominciano a spostare i soldi dalla bank of Japan alla banca del TPL,"
+		},
+		{
+			"timestamps": {
+				"from": "00:03:10,980",
+				"to": "00:03:19,620"
+			},
+			"offsets": {
+				"from": 190980,
+				"to": 199620
+			},
+			"text": " l'acquire, ed arrivano i soldi sul conto corrente dell'acquire, quindi la società di trasporto incassa i soldi,"
+		},
+		{
+			"timestamps": {
+				"from": "00:03:19,620",
+				"to": "00:03:27,140"
+			},
+			"offsets": {
+				"from": 199620,
+				"to": 207140
+			},
+			"text": " che incassa direttamente perché il conto è intestato a loro, preferibile, o lo incassiamo noi e poi li giriamo,"
+		},
+		{
+			"timestamps": {
+				"from": "00:03:27,140",
+				"to": "00:03:33,860"
+			},
+			"offsets": {
+				"from": 207140,
+				"to": 213860
+			},
+			"text": " poi li giriamo, questa è una scelta tecnologica, quindi possiamo avere noi l'acquire, il conto attualizzato con noi,"
+		},
+		{
+			"timestamps": {
+				"from": "00:03:34,500",
+				"to": "00:03:41,620"
+			},
+			"offsets": {
+				"from": 214500,
+				"to": 221620
+			},
+			"text": " oppure figurati se ATM ti fa fare da te da un milione, milioni di euro, il conto è mio,"
+		},
+		{
+			"timestamps": {
+				"from": "00:03:43,140",
+				"to": "00:03:58,500"
+			},
+			"offsets": {
+				"from": 223140,
+				"to": 238500
+			},
+			"text": " e poi io ti stacco la FI, questo anche per altri discorsi di certificazioni, se OpenMove è una società che può fare da incassatore di soldi per vendita di biglietti,"
+		},
+		{
+			"timestamps": {
+				"from": "00:03:58,500",
+				"to": "00:04:13,620"
+			},
+			"offsets": {
+				"from": 238500,
+				"to": 253620
+			},
+			"text": " quindi titoli, il viaggio di un servizio pubblico, oggi si fa borderline probabilmente, siamo un po' lì,"
+		},
+		{
+			"timestamps": {
+				"from": "00:04:13,620",
+				"to": "00:04:18,420"
+			},
+			"offsets": {
+				"from": 253620,
+				"to": 258420
+			},
+			"text": " ma lo fanno un tutto, anche IPA ancora, dei clienti con i quali..."
+		},
+		{
+			"timestamps": {
+				"from": "00:04:18,420",
+				"to": "00:04:23,620"
+			},
+			"offsets": {
+				"from": 258420,
+				"to": 263620
+			},
+			"text": " uno vecchio cliente che deve switchare ancora su quell'altro paradigma, arriva..."
+		},
+		{
+			"timestamps": {
+				"from": "00:04:23,620",
+				"to": "00:04:25,620"
+			},
+			"offsets": {
+				"from": 263620,
+				"to": 265620
+			},
+			"text": " arriva?"
+		},
+		{
+			"timestamps": {
+				"from": "00:04:25,620",
+				"to": "00:04:32,740"
+			},
+			"offsets": {
+				"from": 265620,
+				"to": 272740
+			},
+			"text": " si, arriva però il bacino di Torino, l'ex Sadem, un'azienda tipo..."
+		},
+		{
+			"timestamps": {
+				"from": "00:04:32,740",
+				"to": "00:04:38,740"
+			},
+			"offsets": {
+				"from": 272740,
+				"to": 278740
+			},
+			"text": " si, si, si, mi dice qualcosa, perché ancora in certi GTFS c'è scritto Sadem, mi pare..."
+		},
+		{
+			"timestamps": {
+				"from": "00:04:38,740",
+				"to": "00:04:42,740"
+			},
+			"offsets": {
+				"from": 278740,
+				"to": 282740
+			},
+			"text": " esatto, si, si, si, quindi hanno la..."
+		},
+		{
+			"timestamps": {
+				"from": "00:04:42,740",
+				"to": "00:04:50,740"
+			},
+			"offsets": {
+				"from": 282740,
+				"to": 290740
+			},
+			"text": " ci hanno il LienV, lì ancora appoggiato su una banca di IPA, però insomma sono un po' questi tutti..."
+		},
+		{
+			"timestamps": {
+				"from": "00:04:50,740",
+				"to": "00:04:51,740"
+			},
+			"offsets": {
+				"from": 290740,
+				"to": 291740
+			},
+			"text": " capito?"
+		},
+		{
+			"timestamps": {
+				"from": "00:04:51,740",
+				"to": "00:04:53,740"
+			},
+			"offsets": {
+				"from": 291740,
+				"to": 293740
+			},
+			"text": " tutti i discorsi da fare..."
+		},
+		{
+			"timestamps": {
+				"from": "00:04:53,740",
+				"to": "00:04:55,740"
+			},
+			"offsets": {
+				"from": 293740,
+				"to": 295740
+			},
+			"text": " quindi..."
+		},
+		{
+			"timestamps": {
+				"from": "00:04:55,740",
+				"to": "00:05:00,740"
+			},
+			"offsets": {
+				"from": 295740,
+				"to": 300740
+			},
+			"text": " noi quando ci vediamo lunedì ragioniamo un po' su questa cosa, lui, Mauro, sta già preparando..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:00,740",
+				"to": "00:05:06,740"
+			},
+			"offsets": {
+				"from": 300740,
+				"to": 306740
+			},
+			"text": " io ti comincerò proprio, lo posso chiamare in qualsiasi momento, ci parliamo in due giorni, scriviamo qualcosa..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:06,740",
+				"to": "00:05:09,740"
+			},
+			"offsets": {
+				"from": 306740,
+				"to": 309740
+			},
+			"text": " ci vediamo, come dicevo, per mangiare la pizza..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:09,740",
+				"to": "00:05:11,740"
+			},
+			"offsets": {
+				"from": 309740,
+				"to": 311740
+			},
+			"text": " va bene, perfetto, grazie mille"
+		},
+		{
+			"timestamps": {
+				"from": "00:05:11,740",
+				"to": "00:05:13,740"
+			},
+			"offsets": {
+				"from": 311740,
+				"to": 313740
+			},
+			"text": " quindi lui è già..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:13,740",
+				"to": "00:05:18,740"
+			},
+			"offsets": {
+				"from": 313740,
+				"to": 318740
+			},
+			"text": " si, si, quindi nel senso, se facciamo una pre-union, se poi a un certo punto ci vengono altri dubbi, possiamo anche richiederli..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:18,740",
+				"to": "00:05:22,740"
+			},
+			"offsets": {
+				"from": 318740,
+				"to": 322740
+			},
+			"text": " vedi, esatto, assolutamente si, si possono fare..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:22,740",
+				"to": "00:05:28,740"
+			},
+			"offsets": {
+				"from": 322740,
+				"to": 328740
+			},
+			"text": " lui ha detto, guarda, secondo me, in una mezza giornata noi possiamo coprire tanto, già tanto..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:28,740",
+				"to": "00:05:30,740"
+			},
+			"offsets": {
+				"from": 328740,
+				"to": 330740
+			},
+			"text": " ah, mezza giornata proprio, sarebbe disponibile?"
+		},
+		{
+			"timestamps": {
+				"from": "00:05:30,740",
+				"to": "00:05:33,740"
+			},
+			"offsets": {
+				"from": 330740,
+				"to": 333740
+			},
+			"text": " si, si, si, lui dice un 4 ore..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:33,740",
+				"to": "00:05:36,740"
+			},
+			"offsets": {
+				"from": 333740,
+				"to": 336740
+			},
+			"text": " ma è un workshop, quindi..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:36,740",
+				"to": "00:05:37,740"
+			},
+			"offsets": {
+				"from": 336740,
+				"to": 337740
+			},
+			"text": " se farei..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:37,740",
+				"to": "00:05:40,740"
+			},
+			"offsets": {
+				"from": 337740,
+				"to": 340740
+			},
+			"text": " no, no, secondo me è super..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:40,740",
+				"to": "00:05:43,740"
+			},
+			"offsets": {
+				"from": 340740,
+				"to": 343740
+			},
+			"text": " eh, c'è, c'è di cose di cui parlare, sull'ind..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:43,740",
+				"to": "00:05:47,740"
+			},
+			"offsets": {
+				"from": 343740,
+				"to": 347740
+			},
+			"text": " poi, dipende anche da noi, a cosa vogliamo coprire, però..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:47,740",
+				"to": "00:05:55,740"
+			},
+			"offsets": {
+				"from": 347740,
+				"to": 355740
+			},
+			"text": " poi vediamo anche lui cosa tira fuori, perché lui, come ha detto ora, ci lavora un attimino e ci propone un programma, insomma, fare delle cose..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:55,740",
+				"to": "00:05:56,740"
+			},
+			"offsets": {
+				"from": 355740,
+				"to": 356740
+			},
+			"text": " no, no, no, no..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:56,740",
+				"to": "00:05:57,740"
+			},
+			"offsets": {
+				"from": 356740,
+				"to": 357740
+			},
+			"text": " magari due ore basta..."
+		},
+		{
+			"timestamps": {
+				"from": "00:05:57,740",
+				"to": "00:06:00,740"
+			},
+			"offsets": {
+				"from": 357740,
+				"to": 360740
+			},
+			"text": " si, no, a quel punto potrebbe essere interessante coinvolgere anche..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:00,740",
+				"to": "00:06:04,740"
+			},
+			"offsets": {
+				"from": 360740,
+				"to": 364740
+			},
+			"text": " da capire poi che temi trattiamo, però a quel punto forse anche Elisa, magari..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:04,740",
+				"to": "00:06:06,740"
+			},
+			"offsets": {
+				"from": 364740,
+				"to": 366740
+			},
+			"text": " o..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:06,740",
+				"to": "00:06:07,740"
+			},
+			"offsets": {
+				"from": 366740,
+				"to": 367740
+			},
+			"text": " si, bene..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:07,740",
+				"to": "00:06:08,740"
+			},
+			"offsets": {
+				"from": 367740,
+				"to": 368740
+			},
+			"text": " beh..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:08,740",
+				"to": "00:06:10,740"
+			},
+			"offsets": {
+				"from": 368740,
+				"to": 370740
+			},
+			"text": " certo, considera che è sempre un tecnico, eh..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:10,740",
+				"to": "00:06:11,740"
+			},
+			"offsets": {
+				"from": 370740,
+				"to": 371740
+			},
+			"text": " si, si, si, si..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:11,740",
+				"to": "00:06:12,740"
+			},
+			"offsets": {
+				"from": 371740,
+				"to": 372740
+			},
+			"text": " cioè..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:12,740",
+				"to": "00:06:13,740"
+			},
+			"offsets": {
+				"from": 372740,
+				"to": 373740
+			},
+			"text": " no, no, a me va benissimo..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:13,740",
+				"to": "00:06:14,740"
+			},
+			"offsets": {
+				"from": 373740,
+				"to": 374740
+			},
+			"text": " capito..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:14,740",
+				"to": "00:06:15,740"
+			},
+			"offsets": {
+				"from": 374740,
+				"to": 375740
+			},
+			"text": " non è un..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:15,740",
+				"to": "00:06:18,740"
+			},
+			"offsets": {
+				"from": 375740,
+				"to": 378740
+			},
+			"text": " si, poi possiamo sempre fare un estratto di quello che può essere utile..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:18,740",
+				"to": "00:06:23,740"
+			},
+			"offsets": {
+				"from": 378740,
+				"to": 383740
+			},
+			"text": " per certi business development o cose così e ci hanno mostrato noi..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:23,740",
+				"to": "00:06:29,740"
+			},
+			"offsets": {
+				"from": 383740,
+				"to": 389740
+			},
+			"text": " si, esatto, cioè noi chiediamo magari cose più legate alla parte, ne so, di PM oppure..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:29,740",
+				"to": "00:06:31,740"
+			},
+			"offsets": {
+				"from": 389740,
+				"to": 391740
+			},
+			"text": " no, no, chi se ne frega..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:31,740",
+				"to": "00:06:34,740"
+			},
+			"offsets": {
+				"from": 391740,
+				"to": 394740
+			},
+			"text": " no, no, proprio per capire certe casistiche, come gestirle..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:34,740",
+				"to": "00:06:35,740"
+			},
+			"offsets": {
+				"from": 394740,
+				"to": 395740
+			},
+			"text": " esatto, esatto..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:35,740",
+				"to": "00:06:37,740"
+			},
+			"offsets": {
+				"from": 395740,
+				"to": 397740
+			},
+			"text": " no, no, assolutamente..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:37,740",
+				"to": "00:06:38,740"
+			},
+			"offsets": {
+				"from": 397740,
+				"to": 398740
+			},
+			"text": " c'è casi limite..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:38,740",
+				"to": "00:06:39,740"
+			},
+			"offsets": {
+				"from": 398740,
+				"to": 399740
+			},
+			"text": " no, no, assolutamente..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:39,740",
+				"to": "00:06:40,740"
+			},
+			"offsets": {
+				"from": 399740,
+				"to": 400740
+			},
+			"text": " c'è casi limite..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:40,740",
+				"to": "00:06:41,740"
+			},
+			"offsets": {
+				"from": 400740,
+				"to": 401740
+			},
+			"text": " check out..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:41,740",
+				"to": "00:06:42,740"
+			},
+			"offsets": {
+				"from": 401740,
+				"to": 402740
+			},
+			"text": " e..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:42,740",
+				"to": "00:06:43,740"
+			},
+			"offsets": {
+				"from": 402740,
+				"to": 403740
+			},
+			"text": " multi passeggeri..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:43,740",
+				"to": "00:06:44,740"
+			},
+			"offsets": {
+				"from": 403740,
+				"to": 404740
+			},
+			"text": " per dirai..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:44,740",
+				"to": "00:06:45,740"
+			},
+			"offsets": {
+				"from": 404740,
+				"to": 405740
+			},
+			"text": " gestire..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:45,740",
+				"to": "00:06:47,740"
+			},
+			"offsets": {
+				"from": 405740,
+				"to": 407740
+			},
+			"text": " ah, il periodo gestivo..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:47,740",
+				"to": "00:06:48,740"
+			},
+			"offsets": {
+				"from": 407740,
+				"to": 408740
+			},
+			"text": " gestiamo..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:48,740",
+				"to": "00:06:49,740"
+			},
+			"offsets": {
+				"from": 408740,
+				"to": 409740
+			},
+			"text": " ulti passeggeri..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:49,740",
+				"to": "00:06:50,740"
+			},
+			"offsets": {
+				"from": 409740,
+				"to": 410740
+			},
+			"text": " gestiamo..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:50,740",
+				"to": "00:06:51,740"
+			},
+			"offsets": {
+				"from": 410740,
+				"to": 411740
+			},
+			"text": " ulti passeggeri..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:51,740",
+				"to": "00:06:53,740"
+			},
+			"offsets": {
+				"from": 411740,
+				"to": 413740
+			},
+			"text": " e loro gestivano facendo più tap..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:53,740",
+				"to": "00:06:54,740"
+			},
+			"offsets": {
+				"from": 413740,
+				"to": 414740
+			},
+			"text": " più tap..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:54,740",
+				"to": "00:06:55,740"
+			},
+			"offsets": {
+				"from": 414740,
+				"to": 415740
+			},
+			"text": " oppure facendo in tap..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:55,740",
+				"to": "00:06:57,740"
+			},
+			"offsets": {
+				"from": 415740,
+				"to": 417740
+			},
+			"text": " e poi indicavi quanto..."
+		},
+		{
+			"timestamps": {
+				"from": "00:06:57,740",
+				"to": "00:06:58,740"
+			},
+			"offsets": {
+				"from": 417740,
+				"to": 418740
+			},
+			"text": " bigliettini..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:00,740",
+				"to": "00:07:01,740"
+			},
+			"offsets": {
+				"from": 420740,
+				"to": 421740
+			},
+			"text": " eh..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:01,740",
+				"to": "00:07:02,740"
+			},
+			"offsets": {
+				"from": 421740,
+				"to": 422740
+			},
+			"text": " fa scegli..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:02,740",
+				"to": "00:07:03,740"
+			},
+			"offsets": {
+				"from": 422740,
+				"to": 423740
+			},
+			"text": " per il primo tap..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:04,740",
+				"to": "00:07:06,740"
+			},
+			"offsets": {
+				"from": 424740,
+				"to": 426740
+			},
+			"text": " se non sbaglio..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:07,740",
+				"to": "00:07:09,740"
+			},
+			"offsets": {
+				"from": 427740,
+				"to": 429740
+			},
+			"text": " bisogna che si ritrano poi..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:09,740",
+				"to": "00:07:11,740"
+			},
+			"offsets": {
+				"from": 429740,
+				"to": 431740
+			},
+			"text": " cosa preferisca in gioco la..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:11,740",
+				"to": "00:07:13,740"
+			},
+			"offsets": {
+				"from": 431740,
+				"to": 433740
+			},
+			"text": " lo schema transit..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:13,740",
+				"to": "00:07:16,740"
+			},
+			"offsets": {
+				"from": 433740,
+				"to": 436740
+			},
+			"text": " che lo schema transit è particolare..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:16,740",
+				"to": "00:07:17,740"
+			},
+			"offsets": {
+				"from": 436740,
+				"to": 437740
+			},
+			"text": " e..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:17,740",
+				"to": "00:07:18,740"
+			},
+			"offsets": {
+				"from": 437740,
+				"to": 438740
+			},
+			"text": " e..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:18,740",
+				"to": "00:07:19,740"
+			},
+			"offsets": {
+				"from": 438740,
+				"to": 439740
+			},
+			"text": " devi..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:19,740",
+				"to": "00:07:20,740"
+			},
+			"offsets": {
+				"from": 439740,
+				"to": 440740
+			},
+			"text": " devi..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:20,740",
+				"to": "00:07:22,740"
+			},
+			"offsets": {
+				"from": 440740,
+				"to": 442740
+			},
+			"text": " gestirlo con delle regole ben precise..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:22,740",
+				"to": "00:07:23,740"
+			},
+			"offsets": {
+				"from": 442740,
+				"to": 443740
+			},
+			"text": " sennò poi..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:23,740",
+				"to": "00:07:24,740"
+			},
+			"offsets": {
+				"from": 443740,
+				"to": 444740
+			},
+			"text": " non ti vai a..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:24,740",
+				"to": "00:07:25,740"
+			},
+			"offsets": {
+				"from": 444740,
+				"to": 445740
+			},
+			"text": " in trambi..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:25,740",
+				"to": "00:07:26,740"
+			},
+			"offsets": {
+				"from": 445740,
+				"to": 446740
+			},
+			"text": " cioè..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:26,740",
+				"to": "00:07:27,740"
+			},
+			"offsets": {
+				"from": 446740,
+				"to": 447740
+			},
+			"text": " non ti rispetta le regole transit..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:27,740",
+				"to": "00:07:28,740"
+			},
+			"offsets": {
+				"from": 447740,
+				"to": 448740
+			},
+			"text": " quindi..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:28,740",
+				"to": "00:07:30,740"
+			},
+			"offsets": {
+				"from": 448740,
+				"to": 450740
+			},
+			"text": " devi comunque essere conforme a queste regole..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:30,740",
+				"to": "00:07:31,740"
+			},
+			"offsets": {
+				"from": 450740,
+				"to": 451740
+			},
+			"text": " se non ti..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:31,740",
+				"to": "00:07:32,740"
+			},
+			"offsets": {
+				"from": 451740,
+				"to": 452740
+			},
+			"text": " ti buca..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:32,740",
+				"to": "00:07:33,740"
+			},
+			"offsets": {
+				"from": 452740,
+				"to": 453740
+			},
+			"text": " cioè..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:33,740",
+				"to": "00:07:34,740"
+			},
+			"offsets": {
+				"from": 453740,
+				"to": 454740
+			},
+			"text": " non ti fa..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:34,740",
+				"to": "00:07:35,740"
+			},
+			"offsets": {
+				"from": 454740,
+				"to": 455740
+			},
+			"text": " se non ti fa autorizzare..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:35,740",
+				"to": "00:07:36,740"
+			},
+			"offsets": {
+				"from": 455740,
+				"to": 456740
+			},
+			"text": " eh..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:36,740",
+				"to": "00:07:37,740"
+			},
+			"offsets": {
+				"from": 456740,
+				"to": 457740
+			},
+			"text": " ti fa autorizzare..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:37,740",
+				"to": "00:07:38,740"
+			},
+			"offsets": {
+				"from": 457740,
+				"to": 458740
+			},
+			"text": " che loro ributta..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:38,740",
+				"to": "00:07:39,740"
+			},
+			"offsets": {
+				"from": 458740,
+				"to": 459740
+			},
+			"text": " eh..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:39,740",
+				"to": "00:07:40,740"
+			},
+			"offsets": {
+				"from": 459740,
+				"to": 460740
+			},
+			"text": " e non mi ricordo com'era..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:40,740",
+				"to": "00:07:41,740"
+			},
+			"offsets": {
+				"from": 460740,
+				"to": 461740
+			},
+			"text": " com'era fatto..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:41,740",
+				"to": "00:07:42,740"
+			},
+			"offsets": {
+				"from": 461740,
+				"to": 462740
+			},
+			"text": " all'inizio si lavorava che presenti..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:42,740",
+				"to": "00:07:44,740"
+			},
+			"offsets": {
+				"from": 462740,
+				"to": 464740
+			},
+			"text": " la per una carta una volta..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:44,740",
+				"to": "00:07:45,740"
+			},
+			"offsets": {
+				"from": 464740,
+				"to": 465740
+			},
+			"text": " eh..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:45,740",
+				"to": "00:07:46,740"
+			},
+			"offsets": {
+				"from": 465740,
+				"to": 466740
+			},
+			"text": " laddove c'è la possibilità di..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:46,740",
+				"to": "00:07:48,740"
+			},
+			"offsets": {
+				"from": 466740,
+				"to": 468740
+			},
+			"text": " di fare un ultimo asseggero..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:48,740",
+				"to": "00:07:49,740"
+			},
+			"offsets": {
+				"from": 468740,
+				"to": 469740
+			},
+			"text": " la valiatrice ti..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:49,740",
+				"to": "00:07:52,740"
+			},
+			"offsets": {
+				"from": 469740,
+				"to": 472740
+			},
+			"text": " apri la schermata delle quantità..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:52,740",
+				"to": "00:07:53,740"
+			},
+			"offsets": {
+				"from": 472740,
+				"to": 473740
+			},
+			"text": " eh..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:53,740",
+				"to": "00:07:54,740"
+			},
+			"offsets": {
+				"from": 473740,
+				"to": 474740
+			},
+			"text": " e tu puoi tipo..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:54,740",
+				"to": "00:07:56,740"
+			},
+			"offsets": {
+				"from": 474740,
+				"to": 476740
+			},
+			"text": " entro un certo tempo..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:56,740",
+				"to": "00:07:57,740"
+			},
+			"offsets": {
+				"from": 476740,
+				"to": 477740
+			},
+			"text": " aggiungere anche..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:57,740",
+				"to": "00:07:58,740"
+			},
+			"offsets": {
+				"from": 477740,
+				"to": 478740
+			},
+			"text": " ti fai il primo tap..."
+		},
+		{
+			"timestamps": {
+				"from": "00:07:58,740",
+				"to": "00:08:00,740"
+			},
+			"offsets": {
+				"from": 478740,
+				"to": 480740
+			},
+			"text": " e poi puoi dire un altro..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:00,740",
+				"to": "00:08:02,740"
+			},
+			"offsets": {
+				"from": 480740,
+				"to": 482740
+			},
+			"text": " e poi ripresenti la carta..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:02,740",
+				"to": "00:08:03,740"
+			},
+			"offsets": {
+				"from": 482740,
+				"to": 483740
+			},
+			"text": " ok..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:03,740",
+				"to": "00:08:04,740"
+			},
+			"offsets": {
+				"from": 483740,
+				"to": 484740
+			},
+			"text": " come fa la licenza?"
+		},
+		{
+			"timestamps": {
+				"from": "00:08:04,740",
+				"to": "00:08:05,740"
+			},
+			"offsets": {
+				"from": 484740,
+				"to": 485740
+			},
+			"text": " leggero..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:05,740",
+				"to": "00:08:06,740"
+			},
+			"offsets": {
+				"from": 485740,
+				"to": 486740
+			},
+			"text": " ok..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:06,740",
+				"to": "00:08:08,740"
+			},
+			"offsets": {
+				"from": 486740,
+				"to": 488740
+			},
+			"text": " quindi c'era questa cosa qui..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:08,740",
+				"to": "00:08:10,740"
+			},
+			"offsets": {
+				"from": 488740,
+				"to": 490740
+			},
+			"text": " eh..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:10,740",
+				"to": "00:08:12,740"
+			},
+			"offsets": {
+				"from": 490740,
+				"to": 492740
+			},
+			"text": " non so se è possibile..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:12,740",
+				"to": "00:08:14,740"
+			},
+			"offsets": {
+				"from": 492740,
+				"to": 494740
+			},
+			"text": " fare subito..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:14,740",
+				"to": "00:08:15,740"
+			},
+			"offsets": {
+				"from": 494740,
+				"to": 495740
+			},
+			"text": " tipo..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:15,740",
+				"to": "00:08:16,740"
+			},
+			"offsets": {
+				"from": 495740,
+				"to": 496740
+			},
+			"text": " sulla vetrice..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:16,740",
+				"to": "00:08:17,740"
+			},
+			"offsets": {
+				"from": 496740,
+				"to": 497740
+			},
+			"text": " hai già..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:17,740",
+				"to": "00:08:18,740"
+			},
+			"offsets": {
+				"from": 497740,
+				"to": 498740
+			},
+			"text": " il pulsante..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:18,740",
+				"to": "00:08:19,740"
+			},
+			"offsets": {
+				"from": 498740,
+				"to": 499740
+			},
+			"text": " e fai quantità..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:19,740",
+				"to": "00:08:20,740"
+			},
+			"offsets": {
+				"from": 499740,
+				"to": 500740
+			},
+			"text": " e tanti..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:20,740",
+				"to": "00:08:21,740"
+			},
+			"offsets": {
+				"from": 500740,
+				"to": 501740
+			},
+			"text": " per esempio..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:21,740",
+				"to": "00:08:23,740"
+			},
+			"offsets": {
+				"from": 501740,
+				"to": 503740
+			},
+			"text": " non lo so..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:23,740",
+				"to": "00:08:25,740"
+			},
+			"offsets": {
+				"from": 503740,
+				"to": 505740
+			},
+			"text": " sono scenari che vanno un po' capiti..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:25,740",
+				"to": "00:08:26,740"
+			},
+			"offsets": {
+				"from": 505740,
+				"to": 506740
+			},
+			"text": " però..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:26,740",
+				"to": "00:08:27,740"
+			},
+			"offsets": {
+				"from": 506740,
+				"to": 507740
+			},
+			"text": " se tu raccogli queste..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:27,740",
+				"to": "00:08:28,740"
+			},
+			"offsets": {
+				"from": 507740,
+				"to": 508740
+			},
+			"text": " no no..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:28,740",
+				"to": "00:08:29,740"
+			},
+			"offsets": {
+				"from": 508740,
+				"to": 509740
+			},
+			"text": " assolutamente..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:29,740",
+				"to": "00:08:30,740"
+			},
+			"offsets": {
+				"from": 509740,
+				"to": 510740
+			},
+			"text": " adesso ci comincio a mettere la testa..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:30,740",
+				"to": "00:08:31,740"
+			},
+			"offsets": {
+				"from": 510740,
+				"to": 511740
+			},
+			"text": " a mettere giù un po' di cose..."
+		},
+		{
+			"timestamps": {
+				"from": "00:08:31,740",
+				"to": "00:08:32,900"
+			},
+			"offsets": {
+				"from": 511740,
+				"to": 512900
+			},
+			"text": " Grazie mille, davvero super!"
+		}
+	]
+}

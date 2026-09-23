@@ -10,8 +10,8 @@ Applicazione web locale per la trascrizione audio/video con riconoscimento speak
 | Layer     | Tecnologia                          |
 |-----------|-------------------------------------|
 | Backend   | Python · FastAPI · uvicorn          |
-| Trascrizione | faster-whisper (CTranslate2)     |
-| Diarizzazione | pyannote.audio 3.x              |
+| Trascrizione | whisper.cpp (Metal) / faster-whisper     |
+| Diarizzazione | pyannote.audio 4.0.5 / community-1              |
 | YouTube   | yt-dlp                              |
 | Frontend  | React 18 · Vite · Tailwind CSS      |
 
@@ -19,16 +19,16 @@ Applicazione web locale per la trascrizione audio/video con riconoscimento speak
 
 ## Requisiti
 
-- **Python 3.10+**
+- **Python 3.12**
 - **Node.js 18+** (con npm)
 - **ffmpeg** installato nel PATH (usato da yt-dlp per convertire l'audio)
 
 ```bash
 # macOS
-brew install python@3.11 node ffmpeg
+brew install python@3.12 node ffmpeg
 
 # Ubuntu/Debian
-sudo apt install python3.11 python3.11-venv nodejs npm ffmpeg
+sudo apt install python3.12 python3.12-venv nodejs npm ffmpeg
 ```
 
 ---
@@ -38,17 +38,46 @@ sudo apt install python3.11 python3.11-venv nodejs npm ffmpeg
 ```bash
 git clone <repo-url>
 cd local-whisper
+./setup.sh
 ./start.sh
 ```
 
-Lo script:
-1. Crea un virtualenv Python in `.venv/`
-2. Installa tutte le dipendenze Python (`backend/requirements.txt`)
-3. Installa le dipendenze Node (`frontend/`)
-4. Avvia il backend su `http://localhost:8000`
-5. Avvia il frontend su `http://localhost:5173`
+`setup.sh` prepara Python 3.12, installa dipendenze bloccate in `backend/requirements.lock.txt` e usa `npm ci`.
+`start.sh` avvia backend e frontend senza reinstallazioni. `restart.sh` arresta soltanto processi del progetto sulle porte 8000/5173 e riavvia.
 
 Apri **http://localhost:5173** nel browser.
+
+---
+
+## CLI locale
+
+La CLI elabora un solo file locale in foreground: non avvia frontend né server HTTP.
+Per ora eseguila dalla root del progetto, dopo `./setup.sh`:
+
+```bash
+.venv/bin/python -m backend.cli transcribe ~/Downloads/riunione.mp3
+```
+
+L'output predefinito è `./local-whisper-output/riunione/transcript.txt`. La cartella
+deve essere nuova, così una trascrizione esistente non viene mai sovrascritta.
+
+```bash
+# Export espliciti; --format è ripetibile
+.venv/bin/python -m backend.cli transcribe ~/Downloads/riunione.mp3 \
+  --output ~/Documents/trascrizioni/riunione-settembre \
+  --format txt --format srt --format json --language it --speakers 4
+
+# Override delle preferenze salvate dall'app
+.venv/bin/python -m backend.cli transcribe audio.m4a --backend whisper_cpp --profile quality --no-diarize
+```
+
+Formati disponibili: `txt`, `srt`, `vtt`, `md`, `csv`, `json`. Senza `--format`
+viene creato soltanto TXT. La CLI legge `config.json` ma non lo modifica; `HF_TOKEN`,
+se presente nell'ambiente, ha precedenza sul token locale e non viene mostrato. Input,
+artefatti temporanei e trascrizioni non vengono aggiunti a Git.
+
+L'installazione del comando globale `local-whisper` in `~/bin` e l'eventuale skill per
+agenti saranno aggiunte in una fase separata.
 
 ---
 
@@ -91,8 +120,9 @@ Vengono salvati in `models_cache/` (formato HuggingFace Hub).
 
 ## Apple Silicon (M-series)
 
-CTranslate2 (usato da faster-whisper) supporta MPS (Metal) a partire dalla versione 4.x.  
-Lo script imposta automaticamente `device="auto"` che seleziona Metal se disponibile.
+Su Apple Silicon, whisper.cpp usa Metal. faster-whisper/CTranslate2 usa CPU con int8; non supporta MPS. Pyannote può usare MPS o CPU.
+
+Profilo Qualità whisper.cpp abilita DTW e disabilita Flash Attention perché incompatibili in questa versione. Tempi DTW sperimentali: verificarli sul parlato.
 
 ---
 
@@ -149,3 +179,14 @@ local-whisper/
 | GET    | `/api/jobs/{id}/export/{fmt}`     | Esporta trascrizione               |
 
 Documentazione interattiva: http://localhost:8000/docs
+
+## Revisione qualità e valutazione
+
+Nuova pipeline **Per parola (sperimentale)** selezionabile nelle opzioni, insieme al glossario. In profilo Qualità usa DTW; il modello predefinito non cambia automaticamente.
+
+Aprire una trascrizione → **Revisione qualità** per correggere testo/speaker, dividere alle parole, creare proposte di ritrascrizione e ripristinare versioni. Modifiche manuali al testo o ai tempi invalidano il vecchio allineamento; raw originale resta disponibile.
+
+- `./scripts/check_quality.sh`: test backend e build frontend.
+- `./scripts/download_quality_models.sh`: large-v3 e Silero VAD locali.
+- `./scripts/benchmark_quality.sh`: campione fisso di 600 secondi, tre ripetizioni, VAD acceso/spento.
+- [Guida tecnica e limiti](docs/quality-v1.md): versioni, API, cache e riferimento umano.

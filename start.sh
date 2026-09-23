@@ -40,24 +40,11 @@ trap cleanup EXIT INT TERM
 require_free_port 8000
 require_free_port 5173
 
-if [ ! -d "$VENV" ]; then
-  info "Creazione virtual environment Python..."
-  python3 -m venv "$VENV"
+if [[ ! -x "$VENV/bin/python" || ! -d "$FRONTEND/node_modules" ]]; then
+  error "Dipendenze mancanti. Esegui $ROOT/setup.sh"
+  exit 1
 fi
-
-info "Attivazione venv..."
-# shellcheck source=/dev/null
 source "$VENV/bin/activate"
-
-info "Installazione dipendenze Python..."
-python3 -m ensurepip --upgrade >/dev/null 2>&1 || true
-python3 -m pip install --quiet --upgrade pip
-python3 -m pip install --quiet -r "$BACKEND/requirements.txt"
-
-if [[ "$(uname -m)" == "arm64" && "$(uname)" == "Darwin" ]]; then
-  python3 -c "import torch; assert torch.backends.mps.is_available()" 2>/dev/null \
-    || warn "MPS non disponibile: trascrizione su CPU."
-fi
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
   error "ffmpeg non trovato. Installa con: brew install ffmpeg"
@@ -69,10 +56,6 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-info "Installazione dipendenze frontend..."
-cd "$FRONTEND"
-npm install --silent
-
 mkdir -p "$LOG_DIR"
 : >"$LOG_DIR/backend.log"
 : >"$LOG_DIR/frontend.log"
@@ -80,7 +63,7 @@ mkdir -p "$LOG_DIR"
 info "Avvio backend FastAPI (porta 8000)..."
 cd "$ROOT"
 source "$VENV/bin/activate"
-python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --log-level warning >"$LOG_DIR/backend.log" 2>&1 &
+python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --log-level warning --timeout-graceful-shutdown 10 >"$LOG_DIR/backend.log" 2>&1 &
 PIDS+=($!)
 
 sleep 2

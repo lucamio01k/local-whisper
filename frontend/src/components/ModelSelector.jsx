@@ -25,18 +25,23 @@ const SIZE_LABELS = {
   'large-v2': '3.1 GB', 'large-v3': '3.1 GB', 'large-v3-turbo': '800 MB',
 }
 
-export default function ModelSelector({ selected, onChange, onSelectedStatusChange }) {
+export default function ModelSelector({ selected, onChange, onSelectedStatusChange, backend = 'faster_whisper' }) {
   const [models, setModels] = useState([])
+  const [loadedBackend, setLoadedBackend] = useState(null)
   const [downloading, setDownloading] = useState({})
   const [errors, setErrors] = useState({})
   const [showInfo, setShowInfo] = useState(false)
 
   useEffect(() => {
-    loadModels()
-  }, [])
+    let alive = true
+    fetchModels(backend).then(data => {
+      if (alive) { setModels(data); setLoadedBackend(backend) }
+    }).catch(e => console.error(e))
+    return () => { alive = false }
+  }, [backend])
 
   useEffect(() => {
-    if (!models.length) {
+    if (!models.length || loadedBackend !== backend) {
       onSelectedStatusChange?.(false)
       return
     }
@@ -49,16 +54,7 @@ export default function ModelSelector({ selected, onChange, onSelectedStatusChan
       const firstDownloaded = models.find(m => m.downloaded)
       if (firstDownloaded) onChange(firstDownloaded.name)
     }
-  }, [models, selected, onChange, onSelectedStatusChange])
-
-  async function loadModels() {
-    try {
-      const data = await fetchModels()
-      setModels(data)
-    } catch (e) {
-      console.error(e)
-    }
-  }
+  }, [models, selected, onChange, onSelectedStatusChange, backend, loadedBackend])
 
   function startDownload(modelName) {
     setErrors(e => ({ ...e, [modelName]: null }))
@@ -82,7 +78,8 @@ export default function ModelSelector({ selected, onChange, onSelectedStatusChan
       () => {
         setDownloading(d => { const n = { ...d }; delete n[modelName]; return n })
         setErrors(e => ({ ...e, [modelName]: 'Connessione interrotta' }))
-      }
+      },
+      backend
     )
     return unsub
   }
@@ -132,7 +129,7 @@ export default function ModelSelector({ selected, onChange, onSelectedStatusChan
             </tbody>
           </table>
           <p className="px-3 py-2 text-gray-600 bg-gray-900/60 border-t border-white/5">
-            💡 <strong className="text-gray-500">large-v3-turbo</strong> = qualità large a 1/4 delle risorse. Consigliato per uso quotidiano.
+            💡 <strong className="text-gray-500">large-v3-turbo</strong> = modello rapido; qualità da confrontare sui propri audio.
           </p>
         </div>
       )}

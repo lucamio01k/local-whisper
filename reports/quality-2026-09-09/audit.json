@@ -1,0 +1,739 @@
+{
+  "jobs": [
+    {
+      "job_id": "b12cfe14-e01a-41a6-afac-d18c31eb7046",
+      "filename": "lezione di pawel genrica EMV.mp3",
+      "recorded_metrics": {
+        "transcription_seconds": 31.31,
+        "diarization_seconds": 39.41
+      },
+      "raw_segments": 180,
+      "diarized_segments": 29,
+      "word_timestamps": 0,
+      "word_count": 1271,
+      "text_preserved": true,
+      "zero_duration": 3,
+      "display_zero_duration": 4,
+      "adjacent_duplicate_segments": 14,
+      "longest_turn_seconds": 118.17999999999998,
+      "speaker_turns": {
+        "Pawel": 15,
+        "Luca": 14
+      }
+    },
+    {
+      "job_id": "dc48742f-baa9-44d6-b0cb-0ddb737ea9ba",
+      "filename": "riunione-emv-09-09-2026.mp3",
+      "recorded_metrics": {
+        "transcription_seconds": 168.04
+      },
+      "raw_segments": 2854,
+      "diarized_segments": 393,
+      "word_timestamps": 0,
+      "word_count": 7024,
+      "text_preserved": true,
+      "zero_duration": 6,
+      "display_zero_duration": 685,
+      "adjacent_duplicate_segments": 41,
+      "longest_turn_seconds": 186.08,
+      "speaker_turns": {
+        "Giovanni": 39,
+        "Riccardo": 96,
+        "Elisa": 137,
+        "Luca": 121
+      }
+    }
+  ],
+  "synthetic_checks": {
+    "minority_before": {
+      "A": {
+        "speaker": "A",
+        "segments": 95,
+        "duration": 950.0
+      },
+      "B": {
+        "speaker": "B",
+        "segments": 5,
+        "duration": 25.0
+      }
+    },
+    "minority_after": {
+      "A": {
+        "speaker": "A",
+        "segments": 100,
+        "duration": 975.0
+      }
+    },
+    "offset_500ms_parsed_seconds": 500.0,
+    "zero_timestamp_parsed": null
+  },
+  "diarization_diagnostics": {
+    "speaker_diarization": {
+      "turns": 181,
+      "mixed_segments_at_least_250ms_per_speaker": [
+        {
+          "start": 13.04,
+          "end": 19.74,
+          "overlap_seconds": {
+            "SPEAKER_01": 6.699999999999999,
+            "SPEAKER_00": 1.9743749999999984
+          }
+        },
+        {
+          "start": 20.14,
+          "end": 28.38,
+          "overlap_seconds": {
+            "SPEAKER_01": 8.189374999999998,
+            "SPEAKER_00": 0.708750000000002
+          }
+        },
+        {
+          "start": 28.38,
+          "end": 35.76,
+          "overlap_seconds": {
+            "SPEAKER_01": 7.379999999999999,
+            "SPEAKER_00": 1.3162499999999966
+          }
+        },
+        {
+          "start": 46.12,
+          "end": 55.54,
+          "overlap_seconds": {
+            "SPEAKER_01": 9.153406249999996,
+            "SPEAKER_00": 1.2453437500000035
+          }
+        },
+        {
+          "start": 83.04,
+          "end": 96.38,
+          "overlap_seconds": {
+            "SPEAKER_01": 13.137499999999989,
+            "SPEAKER_00": 1.359656249999972
+          }
+        },
+        {
+          "start": 96.38,
+          "end": 104.26,
+          "overlap_seconds": {
+            "SPEAKER_01": 7.88000000000001,
+            "SPEAKER_00": 1.8465937499999967
+          }
+        },
+        {
+          "start": 104.26,
+          "end": 114.14,
+          "overlap_seconds": {
+            "SPEAKER_01": 9.879999999999995,
+            "SPEAKER_00": 1.9071562499999857
+          }
+        },
+        {
+          "start": 126.02,
+          "end": 130.02,
+          "overlap_seconds": {
+            "SPEAKER_01": 4.000000000000014,
+            "SPEAKER_00": 0.7771562500000044
+          }
+        },
+        {
+          "start": 130.02,
+          "end": 134.02,
+          "overlap_seconds": {
+            "SPEAKER_01": 4.0,
+            "SPEAKER_00": 0.26909374999999613
+          }
+        },
+        {
+          "start": 134.02,
+          "end": 141.76,
+          "overlap_seconds": {
+            "SPEAKER_01": 7.436249999999973,
+            "SPEAKER_00": 0.4684062499999868
+          }
+        },
+        {
+          "start": 141.76,
+          "end": 144.16,
+          "overlap_seconds": {
+            "SPEAKER_01": 1.6743749999999977,
+            "SPEAKER_00": 1.7253437500000075
+          }
+        },
+        {
+          "start": 144.16,
+          "end": 151.72,
+          "overlap_seconds": {
+            "SPEAKER_01": 6.446249999999992,
+            "SPEAKER_00": 1.4343749999999886
+          }
+        },
+        {
+          "start": 151.72,
+          "end": 159.18,
+          "overlap_seconds": {
+            "SPEAKER_01": 5.249374999999986,
+            "SPEAKER_00": 3.696531250000021
+          }
+        },
+        {
+          "start": 159.18,
+          "end": 165.2,
+          "overlap_seconds": {
+            "SPEAKER_01": 5.39909375000002,
+            "SPEAKER_00": 3.677843749999994
+          }
+        },
+        {
+          "start": 165.2,
+          "end": 171.38,
+          "overlap_seconds": {
+            "SPEAKER_01": 5.012156250000004,
+            "SPEAKER_00": 0.8606250000000273
+          }
+        },
+        {
+          "start": 171.38,
+          "end": 178.72,
+          "overlap_seconds": {
+            "SPEAKER_01": 6.951875000000001,
+            "SPEAKER_00": 1.2318750000000023
+          }
+        },
+        {
+          "start": 178.72,
+          "end": 187.72,
+          "overlap_seconds": {
+            "SPEAKER_01": 6.974999999999994,
+            "SPEAKER_00": 1.7718749999999943
+          }
+        },
+        {
+          "start": 187.72,
+          "end": 195.98,
+          "overlap_seconds": {
+            "SPEAKER_01": 7.146249999999981,
+            "SPEAKER_00": 2.413125000000008
+          }
+        },
+        {
+          "start": 195.98,
+          "end": 204.32,
+          "overlap_seconds": {
+            "SPEAKER_01": 8.036250000000024,
+            "SPEAKER_00": 0.40500000000000114
+          }
+        },
+        {
+          "start": 204.32,
+          "end": 210.66,
+          "overlap_seconds": {
+            "SPEAKER_01": 5.732500000000016,
+            "SPEAKER_00": 2.2949999999999875
+          }
+        },
+        {
+          "start": 218.66,
+          "end": 220.66,
+          "overlap_seconds": {
+            "SPEAKER_01": 2.0,
+            "SPEAKER_00": 1.400624999999991
+          }
+        },
+        {
+          "start": 225.0,
+          "end": 238.0,
+          "overlap_seconds": {
+            "SPEAKER_01": 12.341874999999987,
+            "SPEAKER_00": 4.165906250000006
+          }
+        },
+        {
+          "start": 238.0,
+          "end": 247.34,
+          "overlap_seconds": {
+            "SPEAKER_01": 8.023750000000007,
+            "SPEAKER_00": 2.685343750000044
+          }
+        },
+        {
+          "start": 247.34,
+          "end": 257.24,
+          "overlap_seconds": {
+            "SPEAKER_01": 9.02249999999998,
+            "SPEAKER_00": 0.9284062499999663
+          }
+        },
+        {
+          "start": 257.24,
+          "end": 258.34,
+          "overlap_seconds": {
+            "SPEAKER_01": 1.099999999999966,
+            "SPEAKER_00": 1.099999999999966
+          }
+        },
+        {
+          "start": 258.34,
+          "end": 262.34,
+          "overlap_seconds": {
+            "SPEAKER_01": 3.658468750000054,
+            "SPEAKER_00": 0.30034375000002456
+          }
+        },
+        {
+          "start": 265.34,
+          "end": 266.34,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.2697187500000382,
+            "SPEAKER_00": 1.0
+          }
+        },
+        {
+          "start": 266.34,
+          "end": 269.84,
+          "overlap_seconds": {
+            "SPEAKER_01": 2.7284062499999777,
+            "SPEAKER_00": 3.4715937500000678
+          }
+        },
+        {
+          "start": 269.84,
+          "end": 270.84,
+          "overlap_seconds": {
+            "SPEAKER_01": 1.0,
+            "SPEAKER_00": 0.47249999999996817
+          }
+        },
+        {
+          "start": 272.1,
+          "end": 273.1,
+          "overlap_seconds": {
+            "SPEAKER_01": 1.0,
+            "SPEAKER_00": 0.33749999999997726
+          }
+        },
+        {
+          "start": 273.1,
+          "end": 274.1,
+          "overlap_seconds": {
+            "SPEAKER_01": 1.0,
+            "SPEAKER_00": 0.8290312500000141
+          }
+        },
+        {
+          "start": 274.1,
+          "end": 276.1,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.8922187499999836,
+            "SPEAKER_00": 1.814374999999984
+          }
+        },
+        {
+          "start": 278.6,
+          "end": 279.6,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.3375000000000341,
+            "SPEAKER_00": 0.47340624999998226
+          }
+        },
+        {
+          "start": 294.68,
+          "end": 300.18,
+          "overlap_seconds": {
+            "SPEAKER_01": 3.942156250000039,
+            "SPEAKER_00": 0.35437500000000455
+          }
+        },
+        {
+          "start": 310.94,
+          "end": 316.44,
+          "overlap_seconds": {
+            "SPEAKER_01": 1.6537500000000023,
+            "SPEAKER_00": 4.255281249999996
+          }
+        },
+        {
+          "start": 318.7,
+          "end": 319.7,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.421875,
+            "SPEAKER_00": 0.578125
+          }
+        },
+        {
+          "start": 319.7,
+          "end": 320.7,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.5165312500000141,
+            "SPEAKER_00": 0.2640937500000291
+          }
+        },
+        {
+          "start": 332.94,
+          "end": 334.94,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.6422187500000405,
+            "SPEAKER_00": 1.3577812499999595
+          }
+        },
+        {
+          "start": 334.94,
+          "end": 337.44,
+          "overlap_seconds": {
+            "SPEAKER_01": 2.187156249999987,
+            "SPEAKER_00": 1.0825000000000387
+          }
+        },
+        {
+          "start": 337.44,
+          "end": 340.44,
+          "overlap_seconds": {
+            "SPEAKER_01": 2.0887500000000045,
+            "SPEAKER_00": 2.915625000000034
+          }
+        },
+        {
+          "start": 348.44,
+          "end": 352.94,
+          "overlap_seconds": {
+            "SPEAKER_01": 4.5,
+            "SPEAKER_00": 0.30374999999997954
+          }
+        },
+        {
+          "start": 355.7,
+          "end": 356.7,
+          "overlap_seconds": {
+            "SPEAKER_01": 1.0,
+            "SPEAKER_00": 0.8596562499999436
+          }
+        },
+        {
+          "start": 356.7,
+          "end": 360.7,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.8109687500000291,
+            "SPEAKER_00": 3.426249999999982
+          }
+        },
+        {
+          "start": 366.74,
+          "end": 370.74,
+          "overlap_seconds": {
+            "SPEAKER_01": 2.6678437499999745,
+            "SPEAKER_00": 2.4459062500000073
+          }
+        },
+        {
+          "start": 372.74,
+          "end": 373.74,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.5231249999999932,
+            "SPEAKER_00": 1.0
+          }
+        },
+        {
+          "start": 379.74,
+          "end": 384.74,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.7690312500000118,
+            "SPEAKER_00": 4.230968749999988
+          }
+        },
+        {
+          "start": 389.74,
+          "end": 391.74,
+          "overlap_seconds": {
+            "SPEAKER_01": 1.4028437499999882,
+            "SPEAKER_00": 1.677156249999996
+          }
+        },
+        {
+          "start": 391.74,
+          "end": 394.54,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.8321562500000255,
+            "SPEAKER_00": 2.8000000000000114
+          }
+        },
+        {
+          "start": 394.54,
+          "end": 395.54,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.60221875000002,
+            "SPEAKER_00": 1.0
+          }
+        },
+        {
+          "start": 403.54,
+          "end": 404.54,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.37721874999999727,
+            "SPEAKER_00": 1.0
+          }
+        },
+        {
+          "start": 410.54,
+          "end": 413.54,
+          "overlap_seconds": {
+            "SPEAKER_01": 2.5403437500000337,
+            "SPEAKER_00": 2.2990312499999845
+          }
+        },
+        {
+          "start": 421.54,
+          "end": 422.54,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.5665312499999686,
+            "SPEAKER_00": 0.4334687500000314
+          }
+        },
+        {
+          "start": 480.54,
+          "end": 482.54,
+          "overlap_seconds": {
+            "SPEAKER_01": 2.0,
+            "SPEAKER_00": 0.5062500000000227
+          }
+        },
+        {
+          "start": 482.54,
+          "end": 483.54,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.8247187499999882,
+            "SPEAKER_00": 0.4452812500000505
+          }
+        },
+        {
+          "start": 507.54,
+          "end": 508.54,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.4959687500000314,
+            "SPEAKER_00": 0.5209062499999959
+          }
+        }
+      ],
+      "largest_vs_sum_changed_segment_ids": [
+        72,
+        112
+      ],
+      "no_overlap_segment_ids": [
+        104,
+        106,
+        108,
+        120
+      ]
+    },
+    "exclusive_speaker_diarization": {
+      "turns": 126,
+      "mixed_segments_at_least_250ms_per_speaker": [
+        {
+          "start": 46.12,
+          "end": 55.54,
+          "overlap_seconds": {
+            "SPEAKER_01": 9.153406249999996,
+            "SPEAKER_00": 0.2665937500000055
+          }
+        },
+        {
+          "start": 141.76,
+          "end": 144.16,
+          "overlap_seconds": {
+            "SPEAKER_01": 1.2146562499999902,
+            "SPEAKER_00": 1.1853437500000155
+          }
+        },
+        {
+          "start": 144.16,
+          "end": 151.72,
+          "overlap_seconds": {
+            "SPEAKER_01": 6.446249999999992,
+            "SPEAKER_00": 0.5568749999999909
+          }
+        },
+        {
+          "start": 151.72,
+          "end": 159.18,
+          "overlap_seconds": {
+            "SPEAKER_01": 5.215624999999989,
+            "SPEAKER_00": 2.2443750000000193
+          }
+        },
+        {
+          "start": 171.38,
+          "end": 178.72,
+          "overlap_seconds": {
+            "SPEAKER_01": 6.850625000000008,
+            "SPEAKER_00": 0.48937499999999545
+          }
+        },
+        {
+          "start": 178.72,
+          "end": 187.72,
+          "overlap_seconds": {
+            "SPEAKER_01": 6.941249999999997,
+            "SPEAKER_00": 0.7425000000000068
+          }
+        },
+        {
+          "start": 204.32,
+          "end": 210.66,
+          "overlap_seconds": {
+            "SPEAKER_01": 5.563750000000027,
+            "SPEAKER_00": 0.5737499999999898
+          }
+        },
+        {
+          "start": 218.66,
+          "end": 220.66,
+          "overlap_seconds": {
+            "SPEAKER_01": 1.7468749999999886,
+            "SPEAKER_00": 0.25312500000001137
+          }
+        },
+        {
+          "start": 225.0,
+          "end": 238.0,
+          "overlap_seconds": {
+            "SPEAKER_01": 12.341874999999987,
+            "SPEAKER_00": 0.5568750000000193
+          }
+        },
+        {
+          "start": 258.34,
+          "end": 262.34,
+          "overlap_seconds": {
+            "SPEAKER_01": 3.3581250000000296,
+            "SPEAKER_00": 0.30034375000002456
+          }
+        },
+        {
+          "start": 266.34,
+          "end": 269.84,
+          "overlap_seconds": {
+            "SPEAKER_01": 2.7284062499999777,
+            "SPEAKER_00": 0.7715937500000223
+          }
+        },
+        {
+          "start": 273.1,
+          "end": 274.1,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.25534375000000864,
+            "SPEAKER_00": 0.7446562499999914
+          }
+        },
+        {
+          "start": 278.6,
+          "end": 279.6,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.3375000000000341,
+            "SPEAKER_00": 0.47340624999998226
+          }
+        },
+        {
+          "start": 318.7,
+          "end": 319.7,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.421875,
+            "SPEAKER_00": 0.578125
+          }
+        },
+        {
+          "start": 319.7,
+          "end": 320.7,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.5165312500000141,
+            "SPEAKER_00": 0.2640937500000291
+          }
+        },
+        {
+          "start": 332.94,
+          "end": 334.94,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.6422187500000405,
+            "SPEAKER_00": 1.3577812499999595
+          }
+        },
+        {
+          "start": 334.94,
+          "end": 337.44,
+          "overlap_seconds": {
+            "SPEAKER_01": 1.501874999999984,
+            "SPEAKER_00": 0.8462500000000546
+          }
+        },
+        {
+          "start": 337.44,
+          "end": 340.44,
+          "overlap_seconds": {
+            "SPEAKER_01": 1.5759062499999459,
+            "SPEAKER_00": 1.4240937500000541
+          }
+        },
+        {
+          "start": 356.7,
+          "end": 360.7,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.8109687500000291,
+            "SPEAKER_00": 3.189031249999971
+          }
+        },
+        {
+          "start": 366.74,
+          "end": 370.74,
+          "overlap_seconds": {
+            "SPEAKER_01": 1.9759687499999927,
+            "SPEAKER_00": 2.0240312500000073
+          }
+        },
+        {
+          "start": 379.74,
+          "end": 384.74,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.7690312500000118,
+            "SPEAKER_00": 4.230968749999988
+          }
+        },
+        {
+          "start": 389.74,
+          "end": 391.74,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.3228437500000041,
+            "SPEAKER_00": 1.677156249999996
+          }
+        },
+        {
+          "start": 410.54,
+          "end": 413.54,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.7009687500000155,
+            "SPEAKER_00": 2.2990312499999845
+          }
+        },
+        {
+          "start": 421.54,
+          "end": 422.54,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.5665312499999686,
+            "SPEAKER_00": 0.4334687500000314
+          }
+        },
+        {
+          "start": 507.54,
+          "end": 508.54,
+          "overlap_seconds": {
+            "SPEAKER_01": 0.4790937500000041,
+            "SPEAKER_00": 0.5209062499999959
+          }
+        }
+      ],
+      "largest_vs_sum_changed_segment_ids": [],
+      "no_overlap_segment_ids": [
+        104,
+        106,
+        108,
+        120
+      ]
+    }
+  }
+}

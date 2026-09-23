@@ -1,8 +1,17 @@
 import asyncio
+import copy
+import threading
+from functools import wraps
+from contextlib import asynccontextmanager
+from collections import deque
+from backend.storage import atomic_json, active, commit, legacy_version, read_revision, LOCK, digest_file
+from backend.quality import cpp_time, cpp_words, diagnostics, reading_segments, subtitle_segments, PIPELINE_VERSION
+from backend.exporting import render as render_export
 import concurrent.futures
 import inspect
 import json
 import os
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 import platform
 import re
 import select
@@ -22,7 +31,21 @@ from fastapi import BackgroundTasks, Body, FastAPI, File, Form, HTTPException, U
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 
-app = FastAPI(title="Local Whisper")
+@asynccontextmanager
+async def lifespan(application):
+    yield
+    for job in jobs.values():
+        if _is_job_active(job):
+            job['cancel_requested'] = True
+            job['pause_requested'] = False
+    for proc in list(job_processes.values()):
+        if os.name == 'posix' and proc.poll() is None:
+            try: _signal_process(proc, signal.SIGCONT)
+            except ProcessLookupError: pass
+        _terminate_process(proc)
+
+
+app = FastAPI(title="Local Whisper", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -178,6 +201,8 @@ APPROX_SIZES_MB = {
 
 def load_config() -> dict:
     default = {
+        "glossary": "",
+        "diarization_precision": "segments",
         "hf_token": "",
         "default_model": "small",
         "transcription_backend": DEFAULT_TRANSCRIPTION_BACKEND,
@@ -200,7 +225,7 @@ def load_config() -> dict:
 def save_config(config: dict) -> None:
     cleaned = dict(config)
     cleaned.pop("hf_token_set", None)
-    CONFIG_FILE.write_text(json.dumps(cleaned, indent=2))
+    atomic_json(CONFIG_FILE, cleaned)
 
 
 # ── Model helpers ─────────────────────────────────────────────────────────────
@@ -343,33 +368,29 @@ def _find_audio_file(job_id: str) -> Optional[Path]:
     return None
 
 
+def _audio_duration(audio_path):
+    result = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(audio_path)], check=True, capture_output=True, text=True)
+    return float(json.loads(result.stdout)["format"]["duration"])
+
+
 def _prepare_diarization_audio(job_id: str, audio_path: str) -> str:
-    """Normalize input for pyannote/torchaudio, which is stricter than ffmpeg."""
-    source = Path(audio_path)
-
-    dest = _job_dir(job_id) / "diarization.wav"
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-v",
-        "warning",
-        "-i",
-        str(source),
-        "-ac",
-        "1",
-        "-ar",
-        "16000",
-        "-vn",
-        str(dest),
-    ]
-    try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-    except FileNotFoundError as exc:
-        raise RuntimeError("ffmpeg non trovato: necessario per preparare l'audio per pyannote") from exc
-    except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or exc.stdout or str(exc)).strip()
-        raise RuntimeError(f"Preparazione audio per diarizzazione fallita: {detail}") from exc
-
+    started = time.monotonic()
+    directory = _job_dir(job_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    dest = directory / "normalized.wav"
+    marker = directory / "normalized.json"
+    signature = {"sha256": digest_file(audio_path), "rate": 16000, "channels": 1, "codec": "pcm_s16le"}
+    if not dest.exists() or not marker.exists() or json.loads(marker.read_text()) != signature:
+        temp = directory / (uuid.uuid4().hex + ".wav")
+        try:
+            subprocess.run(["ffmpeg", "-nostdin", "-y", "-v", "error", "-i", str(audio_path), "-ac", "1", "-ar", "16000", "-vn", "-c:a", "pcm_s16le", str(temp)], check=True, capture_output=True)
+            os.replace(temp, dest)
+            atomic_json(marker, signature)
+        finally:
+            temp.unlink(missing_ok=True)
+    job = jobs[job_id]
+    job.setdefault("metrics", {})["conversion_seconds"] = round(time.monotonic() - started, 3)
+    job["duration"] = _audio_duration(dest)
     return str(dest)
 
 
@@ -397,35 +418,20 @@ def _load_diarization_waveform(audio_path: str):
 
 
 def save_job_to_disk(job_id: str) -> None:
+    with LOCK:
+        _save_job_locked(job_id)
+
+
+def _save_job_locked(job_id):
     job = jobs.get(job_id)
     if not job:
         return
     d = _job_dir(job_id)
-    d.mkdir(exist_ok=True)
-
-    segments = job.get("segments", [])
-    has_diarization = any(
-        s.get("speaker") and s["speaker"] != "Speaker 1"
-        for s in segments
-    ) or (
-        # diarization was run (even if only 1 speaker found)
-        job.get("diarization_ran", False)
-    )
-
-    # Save raw transcript (speaker field stripped) only if not already saved
-    transcript_file = d / "transcript.json"
-    if not transcript_file.exists() and segments:
-        raw = [{**s, "speaker": None} for s in segments]
-        transcript_file.write_text(json.dumps(raw, ensure_ascii=False))
-
-    # Save diarized version (only if diarization actually ran)
-    if has_diarization or job.get("diarization_ran"):
-        (d / "diarized.json").write_text(
-            json.dumps(segments, ensure_ascii=False)
-        )
-
-    # Meta
+    d.mkdir(parents=True, exist_ok=True)
+    segments = job.get('segments', [])
+    transcript_file = d / 'transcript.json'
     meta = {
+        **{k: job.get(k) for k in QUALITY_FIELDS},
         "id": job_id,
         "title": job.get("title") or job.get("filename", job_id),
         "filename": job.get("filename", ""),
@@ -447,16 +453,57 @@ def save_job_to_disk(job_id: str) -> None:
         "transcription_options": job.get("transcription_options", {}),
         "metrics": job.get("metrics", {}),
     }
-    (d / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+    current = active(d)
+    legacy_file = d / 'diarized.json' if (d / 'diarized.json').exists() else transcript_file
+    previous = current['segments'] if current else json.loads(legacy_file.read_text()) if legacy_file.exists() else []
+    # Snapshot legacy metadata before the first update, not after changing it.
+    if not current and previous:
+        previous_meta = json.loads((d / 'meta.json').read_text()) if (d / 'meta.json').exists() else meta
+        baseline_version = legacy_version(d, previous)
+        atomic_json(d / 'revisions' / (baseline_version + '.json'), {
+            'version': baseline_version, 'parent': None, 'created_at': datetime.now(timezone.utc).isoformat(),
+            'reason': 'legacy', 'segments': previous, 'metadata': previous_meta})
+    if segments and (not current or current['segments'] != segments or current.get('metadata') != meta):
+        record = commit(d, segments, meta, job.pop('_revision_reason', 'processing'), previous=previous)
+        job['version'] = record['version']
+    elif current:
+        job['version'] = current['version']
+    job['diagnostics'] = diagnostics(segments)
+    # HEAD is already durable. A mirror failure must not report an uncommitted
+    # operation or roll back memory to a version different from HEAD.
+    try:
+        atomic_json(d / 'meta.json', meta)
+        cache_key = job.get('diarization_cache_key')
+        if job.get('turns') and isinstance(cache_key, str) and re.fullmatch(r'[0-9a-f]{64}', cache_key):
+            cache_path = d / 'turns_cache' / (cache_key + '.json')
+            if not cache_path.exists(): atomic_json(cache_path, job['turns'])
+        if not transcript_file.exists() and segments:
+            atomic_json(transcript_file, job.get('raw_segments') or [{**seg, 'speaker': None} for seg in segments])
+        if job.get('diarization_ran'):
+            atomic_json(d / 'diarized.json', segments)
+    except OSError as exc:
+        if not active(d): raise
+        job['persistence_warning'] = 'Revisione salvata; copia compatibilità non aggiornata: ' + str(exc)
 
 
 def _load_job_from_disk(job_id: str) -> bool:
+    with LOCK:
+        return _load_job_locked(job_id)
+
+
+def _load_job_locked(job_id: str) -> bool:
     d = _job_dir(job_id)
     meta_file = d / "meta.json"
-    if not meta_file.exists():
+    if not meta_file.exists() and not (d / "HEAD.json").exists():
         return False
-    meta = json.loads(meta_file.read_text())
+    meta = json.loads(meta_file.read_text()) if meta_file.exists() else active(d)["metadata"]
 
+    request_file = d / 'diarization_request.json'
+    if 'expected_speakers' not in meta and request_file.exists():
+        try:
+            request = json.loads(request_file.read_text())
+            meta['expected_speakers'] = request.get('expected_speakers')
+        except (OSError, ValueError): pass
     segments: List[dict] = []
     loaded_diarized = False
     for fname in ("diarized.json", "transcript.json"):
@@ -465,13 +512,18 @@ def _load_job_from_disk(job_id: str) -> bool:
             segments = json.loads(seg_file.read_text())
             loaded_diarized = fname == "diarized.json"
             break
-    if loaded_diarized:
-        segments = _merge_adjacent_same_speaker_segments(segments)
 
+    revision = active(d)
+    if revision:
+        segments = revision['segments']
+        meta.update(revision.get('metadata', {}))
     audio_path = _find_audio_file(job_id)
     existing = jobs.get(job_id, {})
     jobs[job_id] = {
         **existing,
+        **{k: meta.get(k) for k in QUALITY_FIELDS},
+        "version": revision['version'] if revision else legacy_version(d, segments),
+        "diagnostics": diagnostics(segments),
         "status": "done",
         "stage": "done",
         "progress": 100,
@@ -503,15 +555,75 @@ def _load_job_from_disk(job_id: str) -> bool:
 
 def load_jobs_from_disk() -> None:
     for d in sorted(UPLOAD_DIR.iterdir(), key=lambda p: p.stat().st_mtime):
-        if not d.is_dir():
+        if not d.is_dir() or d.name.startswith("_work"):
             continue
         meta_file = d / "meta.json"
-        if not meta_file.exists():
+        if not meta_file.exists() and not (d / "HEAD.json").exists():
             continue
         try:
             _load_job_from_disk(d.name)
         except Exception as e:
             print(f"[warn] Errore caricamento job {d.name}: {e}")
+
+
+QUALITY_FIELDS = ("glossary", "diarization_precision", "min_speakers", "max_speakers", "expected_speakers", "raw_segments", "turns", "diarization_actual_model", "diarization_actual_device", "diarization_cache_key")
+
+
+def _validate_quality_options(precision, glossary, exact=None, minimum=None, maximum=None):
+    if precision not in ('segments', 'words'):
+        raise HTTPException(400, 'Precisione non valida')
+    if not isinstance(glossary, str) or len(glossary) > 4000:
+        raise HTTPException(400, 'Glossario: massimo 4000 caratteri')
+    if exact:
+        return
+    for value in (minimum, maximum):
+        if value is not None and (not isinstance(value, int) or not 1 <= value <= 20):
+            raise HTTPException(400, 'Intervallo speaker: valori fra 1 e 20')
+    if minimum and maximum and minimum > maximum:
+        raise HTTPException(400, 'Minimo speaker maggiore del massimo')
+
+
+_HEAVY_CONDITION = threading.Condition()
+_HEAVY_QUEUE = deque()
+_HEAVY_BUSY = False
+_HEAVY_LOCAL = threading.local()
+
+
+def heavy_job(function):
+    @wraps(function)
+    def queued(job_id, *args, **kwargs):
+        global _HEAVY_BUSY
+        if getattr(_HEAVY_LOCAL, 'running', False):
+            return function(job_id, *args, **kwargs)
+        ticket = object()
+        job = jobs[job_id]
+        with _HEAVY_CONDITION:
+            _HEAVY_QUEUE.append(ticket)
+            job.update(status='queued', stage='queued', message='In coda…', cancelable=True)
+            while _HEAVY_BUSY or _HEAVY_QUEUE[0] is not ticket:
+                if job.get('cancel_requested'):
+                    _HEAVY_QUEUE.remove(ticket)
+                    job.update(status='done' if job.get('segments') else 'canceled', stage='canceled', cancelable=False)
+                    _HEAVY_CONDITION.notify_all()
+                    return
+                _HEAVY_CONDITION.wait(.2)
+            _HEAVY_QUEUE.popleft()
+            _HEAVY_BUSY = True
+        _HEAVY_LOCAL.running = True
+        previous = copy.deepcopy(job.get('segments', []))
+        try:
+            if job.get('cancel_requested'):
+                job.update(status='done' if previous else 'canceled', stage='canceled', cancelable=False)
+                return
+            return function(job_id, *args, **kwargs)
+        finally:
+            if job.get('status') in ('error', 'canceled') and previous:
+                job['segments'] = previous
+            _HEAVY_LOCAL.running = False
+            with _HEAVY_CONDITION:
+                _HEAVY_BUSY = False
+                _HEAVY_CONDITION.notify_all()
+    return queued
 
 
 # Load persisted jobs at startup
@@ -520,119 +632,11 @@ load_jobs_from_disk()
 
 # ── Diarization helper (reusable) ─────────────────────────────────────────────
 
-def _apply_diarization(
-    audio_path: str,
-    segments: List[dict],
-    hf_token: str,
-    expected_speakers: Optional[int] = None,
-    diarization_model: str = DEFAULT_DIARIZATION_MODEL,
-    diarization_mode: str = DEFAULT_DIARIZATION_MODE,
-    diarization_device: str = DEFAULT_DIARIZATION_DEVICE,
-) -> List[dict]:
-    # pyannote checkpoints currently require the legacy torch.load behavior on
-    # PyTorch >= 2.6. This is limited to the trusted pyannote models requested
-    # explicitly by the user through their HuggingFace token.
-    os.environ.setdefault("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
-
-    from pyannote.audio import Pipeline
-    import torch
-
-    model_key = diarization_model if diarization_model in DIARIZATION_MODELS else DEFAULT_DIARIZATION_MODEL
-    model_ids = [DIARIZATION_MODELS[model_key]]
-    fallback_id = DIARIZATION_MODELS["3.1"]
-    if fallback_id not in model_ids:
-        model_ids.append(fallback_id)
-
-    pipeline = None
-    load_errors = []
-    for model_id in model_ids:
-        try:
-            if "token" in inspect.signature(Pipeline.from_pretrained).parameters:
-                pipeline = Pipeline.from_pretrained(model_id, token=hf_token)
-            else:
-                pipeline = Pipeline.from_pretrained(model_id, use_auth_token=hf_token)
-            if pipeline is not None:
-                break
-        except Exception as exc:
-            load_errors.append(f"{model_id}: {exc}")
-
-    if pipeline is None:
-        detail = " | ".join(load_errors) or "pipeline non disponibile"
-        requested = DIARIZATION_MODELS.get(model_key, model_key)
-        raise RuntimeError(
-            f"Impossibile caricare {requested}. "
-            "Verifica token HuggingFace e accettazione dei termini dei modelli pyannote. "
-            f"Dettaglio: {detail}"
-        )
-
-    device_key = _resolve_diarization_device(diarization_device)
-    try:
-        if device_key == "cpu":
-            pipeline = pipeline.to(torch.device("cpu"))
-        elif device_key == "mps":
-            mps = getattr(torch.backends, "mps", None)
-            if not (mps and mps.is_available()):
-                raise RuntimeError("MPS non disponibile per pyannote")
-            pipeline = pipeline.to(torch.device("mps"))
-        else:
-            _dev, _ = detect_device()
-            if _dev in ("cuda", "auto"):
-                mps = getattr(torch.backends, "mps", None)
-                if mps and mps.is_available():
-                    pipeline = pipeline.to(torch.device("mps"))
-                elif torch.cuda.is_available():
-                    pipeline = pipeline.to(torch.device("cuda"))
-    except Exception as exc:
-        if device_key != "auto":
-            raise RuntimeError(f"Device diarizzazione {device_key} non utilizzabile: {exc}") from exc
-
-    pipeline_kwargs = {}
-    if expected_speakers:
-        pipeline_kwargs["num_speakers"] = expected_speakers
-
-    # Passing preloaded audio bypasses pyannote's TorchCodec decoder. TorchCodec
-    # currently cannot load against some newer Homebrew FFmpeg releases.
-    diarization_audio = _load_diarization_waveform(audio_path)
-    diarization = pipeline(diarization_audio, **pipeline_kwargs)
-    turns = _diarization_turns(diarization)
-    raw_speakers = sorted({speaker for _, _, speaker in turns})
-    print(
-        "Diarization turns:",
-        len(turns),
-        "speakers:",
-        raw_speakers,
-        "expected:",
-        expected_speakers,
-        "mode:",
-        diarization_mode,
-        flush=True,
-    )
-
-    def best_speaker(seg_start: float, seg_end: float) -> str:
-        best, best_overlap = "SPEAKER_00", 0.0
-        for t_start, t_end, sp in turns:
-            overlap = max(0, min(seg_end, t_end) - max(seg_start, t_start))
-            if overlap > best_overlap:
-                best_overlap = overlap
-                best = sp
-        return best
-
-    speaker_map: Dict[str, str] = {}
-    counter = 1
-    result = []
-    for seg in segments:
-        raw_sp = best_speaker(seg["start"], seg["end"])
-        if raw_sp not in speaker_map:
-            speaker_map[raw_sp] = f"Speaker {counter}"
-            counter += 1
-        result.append({**seg, "speaker": speaker_map[raw_sp]})
-
-    if diarization_mode == "conservative" and not expected_speakers:
-        result = _conservative_merge_speakers(result)
-
-    result = _merge_adjacent_same_speaker_segments(result)
-
-    return result
+def _apply_diarization(*args, **kwargs):
+    from backend.engine import infer_turns
+    from backend.quality import assign_speakers
+    turns = infer_turns(*args, **kwargs)
+    return assign_speakers(args[1], turns["standard"], turns["exclusive"])
 
 
 def _speaker_stats(segments: List[dict]) -> Dict[str, Dict[str, Any]]:
@@ -669,38 +673,7 @@ def _merge_speaker_into(segments: List[dict], source: str, target: str) -> List[
 
 
 def _conservative_merge_speakers(segments: List[dict]) -> List[dict]:
-    """Merge tiny, isolated speaker clusters that are usually diarization splits."""
-    if not segments:
-        return segments
-
-    result = list(segments)
-    changed = True
-    while changed:
-        changed = False
-        stats = _speaker_stats(result)
-        if len(stats) <= 1:
-            break
-        total_duration = sum(item["duration"] for item in stats.values()) or 1.0
-        total_segments = sum(item["segments"] for item in stats.values()) or 1
-
-        for speaker, item in sorted(stats.items(), key=lambda pair: (pair[1]["duration"], pair[1]["segments"])):
-            duration_share = item["duration"] / total_duration
-            segment_share = item["segments"] / total_segments
-            if item["segments"] > 3 and item["duration"] > 18 and duration_share > 0.04 and segment_share > 0.04:
-                continue
-
-            neighbor_scores = _speaker_neighbor_scores(result, speaker)
-            if not neighbor_scores:
-                continue
-            target = max(
-                neighbor_scores,
-                key=lambda sp: (neighbor_scores[sp], stats.get(sp, {}).get("duration", 0.0)),
-            )
-            result = _merge_speaker_into(result, speaker, target)
-            changed = True
-            break
-
-    return result
+    return copy.deepcopy(segments)
 
 
 def _run_diarization_worker(
@@ -731,6 +704,9 @@ def _run_diarization_worker(
         "diarization_model": diarization_model,
         "diarization_mode": diarization_mode,
         "diarization_device": diarization_device,
+        "diarization_precision": job.get("diarization_precision", "segments"),
+        "min_speakers": job.get("min_speakers"),
+        "max_speakers": job.get("max_speakers"),
     }, ensure_ascii=False))
     result_path.unlink(missing_ok=True)
 
@@ -802,6 +778,16 @@ def _run_diarization_worker(
             if not result.get("ok"):
                 detail = result.get("error") or _tail_text(stderr_path) or "Diarizzazione fallita"
                 raise RuntimeError(detail)
+            job["turns"] = result.get("turns")
+            job["diarization_cache_key"] = result.get("cache_key")
+            job.setdefault("metrics", {}).update({
+                "diarization_cache_hit": result.get("cache_hit", False),
+                "speaker_assignment_seconds": result.get("assignment_seconds", 0),
+                "diarization_model_load_seconds": 0 if result.get("cache_hit") else result.get("turns", {}).get("load_seconds"),
+                "diarization_inference_seconds": 0 if result.get("cache_hit") else result.get("turns", {}).get("inference_seconds"),
+            })
+            job["diarization_actual_device"] = result.get("turns", {}).get("device")
+            job["diarization_actual_model"] = result.get("turns", {}).get("model")
             return result["segments"]
         finally:
             job_processes.pop(job_id, None)
@@ -857,13 +843,7 @@ def _parse_timestamp_seconds(value: Any) -> Optional[float]:
 
 
 def _whisper_cpp_segment_time(seg: dict, key: str) -> Optional[float]:
-    timestamps = seg.get("timestamps") or {}
-    offsets = seg.get("offsets") or {}
-    return (
-        _parse_timestamp_seconds(timestamps.get(key))
-        or _parse_timestamp_seconds(offsets.get(key))
-        or _parse_timestamp_seconds(seg.get(key))
-    )
+    return cpp_time(seg, key)
 
 
 def _parse_whisper_cpp_progress(line: str) -> Optional[int]:
@@ -874,32 +854,7 @@ def _parse_whisper_cpp_progress(line: str) -> Optional[int]:
 
 
 def _prepare_whisper_cpp_audio(job_id: str, audio_path: str) -> str:
-    source = Path(audio_path)
-    dest = _job_dir(job_id) / "whisper_cpp.wav"
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-v",
-        "warning",
-        "-i",
-        str(source),
-        "-ac",
-        "1",
-        "-ar",
-        "16000",
-        "-vn",
-        "-c:a",
-        "pcm_s16le",
-        str(dest),
-    ]
-    try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-    except FileNotFoundError as exc:
-        raise RuntimeError("ffmpeg non trovato: necessario preparare l'audio per whisper.cpp") from exc
-    except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or exc.stdout or str(exc)).strip()
-        raise RuntimeError(f"Preparazione audio per whisper.cpp fallita: {detail}") from exc
-    return str(dest)
+    return _prepare_diarization_audio(job_id, audio_path)
 
 
 def _run_whisper_cpp(
@@ -939,17 +894,22 @@ def _run_whisper_cpp(
         str(model_path),
         "-f",
         wav_path,
-        "-oj",
+        "-ojf",
         "-of",
         str(output_prefix),
         "-t",
         str(threads),
         "-bs",
         str(profile["beam_size"]),
-        "-pp",
+        "-bo", str(profile["best_of"]),
+        "-pp", "-l", language or "auto",
     ]
-    if language:
-        cmd += ["-l", language]
+    use_dtw = profile.get("word_timestamps", False)
+    if use_dtw:
+        preset = model_name.replace("-", ".")
+        cmd += ["-dtw", preset, "-nfa"]
+    if job.get("glossary"):
+        cmd += ["--prompt", job["glossary"]]
 
     progress("transcribing", 20, f"Trascrizione whisper.cpp in corso ({profile['label']})…")
     with stdout_path.open("w") as stdout, stderr_path.open("w") as stderr:
@@ -988,6 +948,10 @@ def _run_whisper_cpp(
                     if paused_process and os.name == "posix":
                         _signal_process(proc, signal.SIGCONT)
                     _terminate_process(proc)
+                    try: proc.wait(timeout=8)
+                    except subprocess.TimeoutExpired:
+                        _terminate_process(proc, force=True)
+                        proc.wait(timeout=3)
                     raise RuntimeError("Trascrizione whisper.cpp annullata")
                 if job.get("pause_requested"):
                     if not paused_process and os.name == "posix":
@@ -1007,7 +971,6 @@ def _run_whisper_cpp(
                                 job.get("progress", last_progress_pct),
                                 "Trascrizione whisper.cpp in corso…",
                             )
-                    time.sleep(0.1)
             if proc.stderr:
                 for line in proc.stderr:
                     stderr.write(line)
@@ -1038,12 +1001,12 @@ def _run_whisper_cpp(
                         "start": float(start),
                         "end": float(end),
                         "text": text,
-                        "words": [],
+                        "words": cpp_words(seg, use_dtw),
                         "speaker": None,
                     })
 
             result = data.get("result") or {}
-            duration = max((seg["end"] for seg in raw_segments), default=None)
+            duration = _audio_duration(wav_path)
             info = {
                 "language": result.get("language") or language,
                 "duration": duration,
@@ -1051,16 +1014,86 @@ def _run_whisper_cpp(
                 "binary": str(binary),
                 "model_path": str(model_path),
                 "threads": threads,
-                "word_timestamps": False,
+                "word_timestamps": True,
+                "alignment": "dtw" if use_dtw else "token",
+                "device": "metal" if platform.system() == "Darwin" else "auto",
                 "elapsed_seconds": round(time.monotonic() - started, 2),
             }
+            log_text = stderr_path.read_text(errors="replace")
+            timing = {}
+            for metric, pattern in [("model_load_seconds", r"load time\s*=\s*([\d.]+) ms"), ("asr_seconds", r"total time\s*=\s*([\d.]+) ms")]:
+                match = re.search(pattern, log_text)
+                if match: timing[metric] = float(match.group(1)) / 1000
+            # CLI total includes alignment; do not fabricate a separate DTW timer.
+            timing["alignment_seconds"] = None if use_dtw else 0
+            timing["alignment_included_in_asr"] = use_dtw
+            job.setdefault("metrics", {}).update(timing)
+            info["device"] = "metal" if "using device Metal" in log_text or "ggml_metal" in log_text else ("cuda" if "CUDA" in log_text else "cpu")
             return raw_segments, info
         finally:
             job_processes.pop(job_id, None)
 
 
+def _run_faster_whisper_worker(job_id, audio_path, model_name, language, profile, progress):
+    job = jobs[job_id]
+    audio = _prepare_diarization_audio(job_id, audio_path)
+    duration = _audio_duration(audio_path)
+    device, compute_type = detect_device()
+    if device == 'auto': device = 'cpu'  # CTranslate2 has no Metal backend.
+    words = bool(profile['word_timestamps'] or job.get('diarization_precision') == 'words')
+    job['transcription_options'].update(device=device, compute_type=compute_type, word_timestamps=words)
+    folder = _job_dir(job_id)
+    request, output = folder/'asr_request.json', folder/'asr_result.json'
+    progress_path = Path(str(output) + '.progress')
+    output.unlink(missing_ok=True)
+    progress_path.unlink(missing_ok=True)
+    atomic_json(request, dict(audio=audio, model=model_name, language=language or None,
+        glossary=job.get('glossary'), device=device, compute_type=compute_type, models_dir=str(MODELS_DIR),
+        beam_size=profile['beam_size'], best_of=profile['best_of'], word_timestamps=words))
+    progress('transcribing', 5, f'Caricamento modello {model_name}…')
+    with (folder/'asr_worker.log').open('w') as log:
+        proc = subprocess.Popen([sys.executable, '-m', 'backend.asr_worker', str(request), str(output)],
+            cwd=str(BASE_DIR), stdout=log, stderr=log, start_new_session=(os.name == 'posix'))
+        job_processes[job_id] = proc
+        paused = False
+        try:
+            while proc.poll() is None:
+                _check_canceled(job)
+                if job.get('pause_requested'):
+                    if not paused and os.name == 'posix':
+                        _signal_process(proc, signal.SIGSTOP)
+                        paused = True
+                    job.update(status='paused', stage='paused', previous_stage='transcribing')
+                else:
+                    if paused and os.name == 'posix':
+                        _signal_process(proc, signal.SIGCONT)
+                        paused = False
+                    if progress_path.exists():
+                        end = json.loads(progress_path.read_text())['end']
+                        progress('transcribing', min(80, 20+int(end/max(duration, 1)*60)), f'Trascritto {end:.1f}s / {duration:.1f}s')
+                time.sleep(.2)
+            _check_canceled(job)
+            if not output.exists():
+                raise RuntimeError('Worker ASR terminato senza risultato')
+            result = json.loads(output.read_text())
+            if proc.returncode or not result.get('ok'):
+                raise RuntimeError(result.get('error') or 'Worker ASR fallito')
+            job['metrics'].update(result['metrics'])
+            return result['segments'], {'language': result['language'], 'duration': duration}
+        finally:
+            if proc.poll() is None:
+                if paused and os.name == 'posix': _signal_process(proc, signal.SIGCONT)
+                _terminate_process(proc)
+                try: proc.wait(timeout=8)
+                except subprocess.TimeoutExpired:
+                    _terminate_process(proc, force=True)
+                    proc.wait(timeout=3)
+            job_processes.pop(job_id, None)
+
+
 # ── Background task: transcribe ───────────────────────────────────────────────
 
+@heavy_job
 def _run_transcription(
     job_id: str,
     audio_path: str,
@@ -1093,6 +1126,9 @@ def _run_transcription(
         diarization_start = _resolve_diarization_start(diarization_start, diarize)
         diarization_device = _resolve_diarization_device(diarization_device)
         job["performance_profile"] = profile_key
+        job["expected_speakers"] = expected_speakers
+        job["diarization_model"] = diarization_model
+        job["diarization_mode"] = diarization_mode
         job["transcription_backend"] = backend
         job["diarization_start"] = diarization_start
         job["diarization_device"] = diarization_device
@@ -1113,48 +1149,11 @@ def _run_transcription(
                 "model_path": info.get("model_path"),
                 "threads": info.get("threads"),
                 "word_timestamps": info.get("word_timestamps", False),
+                "alignment": info.get("alignment"),
+                "device": info.get("device"),
             })
         else:
-            from faster_whisper import WhisperModel
-
-            progress("transcribing", 5, f"Caricamento modello {model_name}…")
-            _wait_if_paused(job)
-            device, compute_type = detect_device()
-            job["transcription_options"]["device"] = device
-            job["transcription_options"]["compute_type"] = compute_type
-            load_started = time.monotonic()
-            model = WhisperModel(
-                model_name, device=device, compute_type=compute_type,
-                download_root=str(MODELS_DIR),
-            )
-            metrics["model_load_seconds"] = round(time.monotonic() - load_started, 2)
-
-            progress("transcribing", 20, f"Trascrizione in corso ({profile['label']})…")
-            _wait_if_paused(job)
-            segments_iter, info = model.transcribe(
-                audio_path, language=language or None,
-                beam_size=profile["beam_size"],
-                best_of=profile["best_of"],
-                word_timestamps=profile["word_timestamps"],
-            )
-
-            raw_segments = []
-            for seg in segments_iter:
-                _wait_if_paused(job)
-                raw_segments.append({
-                    "id": seg.id,
-                    "start": seg.start,
-                    "end": seg.end,
-                    "text": seg.text.strip(),
-                    "words": [
-                        {"word": w.word, "start": w.start, "end": w.end, "prob": w.probability}
-                        for w in (seg.words or [])
-                    ],
-                    "speaker": None,
-                })
-                pct = min(80, 20 + int(seg.end / max(info.duration, 1) * 60))
-                progress("transcribing", pct, f"Trascritto {seg.end:.1f}s / {info.duration:.1f}s")
-
+            raw_segments, info = _run_faster_whisper_worker(job_id, audio_path, model_name, language, profile, progress)
         progress("transcribing", 82, "Trascrizione completata.")
         _wait_if_paused(job)
         metrics["transcription_seconds"] = round(time.monotonic() - transcribe_started, 2)
@@ -1165,7 +1164,9 @@ def _run_transcription(
         job["model"] = model_name
         d = _job_dir(job_id)
         d.mkdir(exist_ok=True)
-        (d / "transcript.json").write_text(json.dumps(raw_segments, ensure_ascii=False))
+        if not (d / "transcript.json").exists():
+            atomic_json(d / "transcript.json", raw_segments)
+        job["raw_segments"] = raw_segments
 
         final_segments = raw_segments
 
@@ -1175,7 +1176,7 @@ def _run_transcription(
             progress("diarizing", 83, "Preparazione diarizzazione…")
             try:
                 _check_canceled(job)
-                diarization_audio = _prepare_diarization_audio(job_id, audio_path)
+                diarization_audio = str(_job_dir(job_id) / "normalized.wav") if (_job_dir(job_id) / "normalized.wav").exists() else _prepare_diarization_audio(job_id, audio_path)
                 _check_canceled(job)
                 progress("diarizing", 84, "Diarizzazione in corso…")
                 diarization_started = time.monotonic()
@@ -1200,17 +1201,19 @@ def _run_transcription(
                 job["diarization_error"] = str(e)
                 progress("diarizing", 96, f"Diarizzazione fallita: {e}")
                 for seg in final_segments:
-                    seg["speaker"] = "Speaker 1"
+                    seg["speaker"] = None
         else:
             for seg in final_segments:
                 seg["speaker"] = "Speaker 1"
 
-        progress("done", 100, "Completato.")
-        job["status"] = "done"
+        progress("saving", 98, "Salvataggio revisione…")
         job["pausable"] = False
         job["cancelable"] = False
         job["segments"] = final_segments
+        job["metrics"]["total_seconds"] = round(time.monotonic() - transcribe_started, 3)
         save_job_to_disk(job_id)
+        progress("done", 100, "Completato.")
+        job["status"] = "done"
 
     except Exception as exc:
         (_job_dir(job_id) / "transcription_error.log").write_text(
@@ -1232,6 +1235,7 @@ def _run_transcription(
 
 # ── Background task: re-diarize existing job ─────────────────────────────────
 
+@heavy_job
 def _run_rediarization(
     job_id: str,
     hf_token: str,
@@ -1241,6 +1245,7 @@ def _run_rediarization(
     diarization_device: str = DEFAULT_DIARIZATION_DEVICE,
 ) -> None:
     job = jobs[job_id]
+    before = copy.deepcopy(job)
 
     def progress(stage: str, pct: int, msg: str = "") -> None:
         job["stage"] = stage
@@ -1258,17 +1263,29 @@ def _run_rediarization(
 
         # Load raw transcript (no speakers)
         transcript_file = _job_dir(job_id) / "transcript.json"
-        if transcript_file.exists():
+        if job.get("raw_segments"):
+            raw_segments = copy.deepcopy(job["raw_segments"])
+        elif transcript_file.exists():
             raw_segments = json.loads(transcript_file.read_text())
         else:
             # Fall back to current segments, stripped of speakers
             raw_segments = [{**s, "speaker": None} for s in job.get("segments", [])]
+
+        # Speaker-only reprocessing must not undo manually corrected text.
+        current_segments = job.get('segments') or []
+        normalize_text = lambda items: ' '.join(' '.join(s.get('text', '') for s in items).split())
+        if current_segments and normalize_text(current_segments) != normalize_text(raw_segments):
+            raw_segments = copy.deepcopy(current_segments)
+            for segment in raw_segments:
+                segment['speaker'] = None
+                for word in segment.get('words', []): word['speaker'] = None
 
         progress("diarizing", 10, "Preparazione diarizzazione…")
         _check_canceled(job)
         diarization_audio = _prepare_diarization_audio(job_id, str(audio_path))
         _check_canceled(job)
         progress("diarizing", 10, "Diarizzazione in corso…")
+        diarization_started = time.monotonic()
         final_segments = _run_diarization_worker(
             job_id,
             diarization_audio,
@@ -1277,21 +1294,27 @@ def _run_rediarization(
             expected_speakers,
             diarization_model,
             diarization_mode,
+            job["diarization_device"],
         )
+        job.setdefault("metrics", {})["diarization_seconds"] = round(time.monotonic() - diarization_started, 3)
         _check_canceled(job)
 
         job["diarization_ran"] = True
         job["diarization_error"] = None
         job["segments"] = final_segments
-        job["status"] = "done"
+        job["status"] = "processing"
         job["pausable"] = False
         job["cancelable"] = False
         job["stage"] = "done"
         job["progress"] = 100
         job["message"] = "Diarizzazione completata."
         save_job_to_disk(job_id)
+        job["status"] = "done"
 
     except Exception as exc:
+        canceled = job.get("cancel_requested")
+        job.update(before)
+        job["cancel_requested"] = canceled
         if job.get("cancel_requested"):
             job["status"] = "done"
             job["stage"] = "done"
@@ -1308,7 +1331,7 @@ def _run_rediarization(
             job["message"] = str(exc)
         job["pausable"] = False
         job["cancelable"] = False
-        save_job_to_disk(job_id)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1358,6 +1381,9 @@ def post_config(body: dict):
     elif token_present and not cfg.get("hf_token"):
         cfg["hf_token"] = ""
 
+    for key in ('glossary', 'diarization_precision'):
+        if key in body: cfg[key] = body[key]
+    _validate_quality_options(cfg.get('diarization_precision', 'segments'), cfg.get('glossary', ''))
     save_config(cfg)
     return {"ok": True}
 
@@ -1365,15 +1391,15 @@ def post_config(body: dict):
 # ── Models ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/models")
-def list_models():
+def list_models(backend: str = "faster_whisper"):
     return [
-        {"name": n, "downloaded": is_model_downloaded(n), "size_mb": APPROX_SIZES_MB.get(n, 0)}
+        {"name": n, "downloaded": bool(_whisper_cpp_model_path(n)) if backend == "whisper_cpp" else is_model_downloaded(n), "size_mb": APPROX_SIZES_MB.get(n, 0)}
         for n in WHISPER_MODELS
     ]
 
 
 @app.get("/api/models/{model_name}/download")
-async def download_model_sse(model_name: str):
+async def download_model_sse(model_name: str, backend: str = "faster_whisper"):
     _validate_model_name(model_name)
 
     async def generator():
@@ -1381,6 +1407,33 @@ async def download_model_sse(model_name: str):
             return f"data: {json.dumps(data)}\n\n"
 
         yield send({"status": "starting", "progress": 0})
+
+        if backend == 'whisper_cpp':
+            import httpx
+            target = WHISPER_CPP_MODELS_DIR / f'ggml-{model_name}.bin'
+            temp = target.with_name(target.name + '.' + uuid.uuid4().hex + '.part')
+            try:
+                if not _whisper_cpp_model_path(model_name):
+                    url = f'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{model_name}.bin'
+                    async with httpx.AsyncClient(follow_redirects=True, timeout=120) as client:
+                        async with client.stream('GET', url) as response:
+                            response.raise_for_status()
+                            total = int(response.headers.get('content-length') or 0)
+                            downloaded = 0
+                            async with aiofiles.open(temp, 'wb') as output:
+                                async for chunk in response.aiter_bytes(1024*1024):
+                                    await output.write(chunk)
+                                    downloaded += len(chunk)
+                                    yield send({'status': 'downloading', 'progress': min(99, int(downloaded/total*100)) if total else 0})
+                            if not downloaded or (total and downloaded != total):
+                                raise RuntimeError('Download incompleto')
+                    os.replace(temp, target)
+                yield send({'status': 'done', 'progress': 100})
+            except Exception as exc:
+                yield send({'status': 'error', 'error': str(exc)})
+            finally:
+                temp.unlink(missing_ok=True)
+            return
 
         loop = asyncio.get_event_loop()
         progress_state = {"pct": 0, "msg": ""}
@@ -1464,11 +1517,18 @@ async def create_transcription_job(
     diarization_device: Optional[str] = Form(None),
     performance_profile: Optional[str] = Form(None),
     transcription_backend: Optional[str] = Form(None),
+    glossary: Optional[str] = Form(None),
+    diarization_precision: Optional[str] = Form(None),
+    min_speakers: Optional[int] = Form(None),
+    max_speakers: Optional[int] = Form(None),
 ):
     _validate_model_name(model_name)
     expected_speakers = _normalize_expected_speakers(expected_speakers)
 
     cfg = load_config()
+    glossary = glossary if glossary is not None else cfg.get("glossary", "")
+    diarization_precision = diarization_precision or cfg.get("diarization_precision", "segments")
+    _validate_quality_options(diarization_precision, glossary, expected_speakers, min_speakers, max_speakers)
     hf_token = cfg.get("hf_token", "")
     diarization_enabled = bool(cfg.get("diarization_enabled", True))
     diarization_model = cfg.get("diarization_model", DEFAULT_DIARIZATION_MODEL)
@@ -1499,6 +1559,10 @@ async def create_transcription_job(
     now = datetime.now(timezone.utc).isoformat()
 
     jobs[job_id] = {
+        "glossary": glossary,
+        "diarization_precision": diarization_precision,
+        "min_speakers": min_speakers,
+        "max_speakers": max_speakers,
         "status": "queued",
         "stage": "queued",
         "progress": 0,
@@ -1736,7 +1800,13 @@ def rediarize_job(
         raise HTTPException(404)
     if _is_job_active(jobs[job_id]):
         raise HTTPException(409, "Questo job è già in elaborazione")
+    with LOCK:
+        _check_edit_version(job_id, (body or {}).get('version'), required=False)
     expected_speakers = _normalize_expected_speakers((body or {}).get("expected_speakers"))
+    precision = (body or {}).get('diarization_precision') or jobs[job_id].get('diarization_precision') or 'segments'
+    minimum, maximum = (body or {}).get('min_speakers'), (body or {}).get('max_speakers')
+    _validate_quality_options(precision, '', expected_speakers, minimum, maximum)
+    jobs[job_id].update(diarization_precision=precision, min_speakers=minimum, max_speakers=maximum)
     cfg = load_config()
     hf_token = cfg.get("hf_token", "")
     diarization_model = (body or {}).get("diarization_model") or cfg.get("diarization_model", DEFAULT_DIARIZATION_MODEL)
@@ -1800,15 +1870,27 @@ def rename_job(job_id: str, body: dict):
 
 @app.post("/api/jobs/{job_id}/speakers")
 def update_speakers(job_id: str, body: dict):
-    if job_id not in jobs:
-        raise HTTPException(404)
-    mapping: Dict[str, str] = body.get("mapping", {})
-    for seg in jobs[job_id].get("segments", []):
-        old = seg.get("speaker")
-        if old and old in mapping:
-            seg["speaker"] = mapping[old]
-    save_job_to_disk(job_id)
-    return {"ok": True}
+    with LOCK:
+        _check_edit_version(job_id, body.get('version'), required=False)
+        job = jobs[job_id]
+        previous = copy.deepcopy(job)
+        mapping = body.get('mapping', {})
+        if not isinstance(mapping, dict) or any(not isinstance(k, str) or not isinstance(v, str) or not v.strip() for k, v in mapping.items()):
+            raise HTTPException(400, 'Nomi speaker non validi')
+        try:
+            job['segments'] = copy.deepcopy(job['segments'])
+            for seg in job['segments']:
+                seg['speaker'] = mapping.get(seg.get('speaker'), seg.get('speaker'))
+                seg['speaker_candidates'] = list(dict.fromkeys(mapping.get(sp, sp) for sp in seg.get('speaker_candidates', [])))
+                for word in seg.get('words', []):
+                    word['speaker'] = mapping.get(word.get('speaker'), word.get('speaker'))
+                    word['speaker_candidates'] = list(dict.fromkeys(mapping.get(sp, sp) for sp in word.get('speaker_candidates', [])))
+            job['_revision_reason'] = 'speaker_names'
+            save_job_to_disk(job_id)
+        except Exception:
+            job.update(previous)
+            raise
+        return {'ok': True, 'version': job.get('version')}
 
 
 @app.get("/api/jobs/{job_id}/speakers/suggestions")
@@ -1889,6 +1971,8 @@ def delete_job(job_id: str):
 def get_history():
     result = []
     for job_id in list(jobs.keys()):
+        if job_id.startswith("_work"):
+            continue
         job = jobs[job_id]
         if not _is_job_active(job):
             try:
@@ -1936,20 +2020,6 @@ def serve_audio(job_id: str):
     return FileResponse(str(audio))
 
 
-# ── Export ────────────────────────────────────────────────────────────────────
-
-def _format_timestamp(seconds: float, fmt: str = "srt") -> str:
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = int(seconds % 60)
-    ms = int((seconds % 1) * 1000)
-    if fmt == "srt":
-        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-    if fmt == "vtt":
-        return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
-    return f"{h:02d}:{m:02d}:{s:02d}"
-
-
 @app.get("/api/jobs/{job_id}/export/{fmt}")
 def export_transcript(job_id: str, fmt: str, variant: str = "speakers"):
     if job_id not in jobs:
@@ -1970,76 +2040,10 @@ def export_transcript(job_id: str, fmt: str, variant: str = "speakers"):
         raise HTTPException(400, "Nessun segmento disponibile")
 
     fmt = fmt.lower()
-    media_type = "text/plain"
-    content = ""
-
-    if fmt == "txt":
-        lines = []
-        for seg in segments:
-            prefix = (
-                f"[{_format_timestamp(seg['start'],'plain')} → "
-                f"{_format_timestamp(seg['end'],'plain')}]"
-            )
-            speaker = seg.get("speaker") if variant == "speakers" else None
-            lines.append(f"{prefix} {speaker}: {seg['text']}" if speaker else f"{prefix} {seg['text']}")
-        content = "\n".join(lines)
-
-    elif fmt == "srt":
-        lines = []
-        for i, seg in enumerate(segments, 1):
-            lines += [
-                str(i),
-                f"{_format_timestamp(seg['start'],'srt')} --> {_format_timestamp(seg['end'],'srt')}",
-                f"{seg.get('speaker','')}: {seg['text']}"
-                if variant == "speakers" and seg.get("speaker")
-                else seg["text"],
-                "",
-            ]
-        content = "\n".join(lines)
-        media_type = "text/srt"
-
-    elif fmt == "vtt":
-        lines = ["WEBVTT", ""]
-        for seg in segments:
-            lines += [
-                f"{_format_timestamp(seg['start'],'vtt')} --> {_format_timestamp(seg['end'],'vtt')}",
-                f"{seg.get('speaker','')}: {seg['text']}"
-                if variant == "speakers" and seg.get("speaker")
-                else seg["text"],
-                "",
-            ]
-        content = "\n".join(lines)
-        media_type = "text/vtt"
-
-    elif fmt == "md":
-        lines = ["# Trascrizione\n"]
-        current_speaker = None
-        for seg in segments:
-            if variant == "speakers":
-                sp = seg.get("speaker") or "—"
-                if sp != current_speaker:
-                    lines.append(f"\n**{sp}**")
-                    current_speaker = sp
-            lines.append(f"*[{_format_timestamp(seg['start'],'plain')}]* {seg['text']}")
-        content = "\n".join(lines)
-
-    elif fmt == "csv":
-        import csv, io
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        columns = ["id", "start", "end", "text"] if variant == "raw" else ["id", "start", "end", "speaker", "text"]
-        writer.writerow(columns)
-        for seg in segments:
-            if variant == "raw":
-                writer.writerow([seg.get("id", ""), seg["start"], seg["end"], seg["text"]])
-            else:
-                writer.writerow([seg.get("id", ""), seg["start"], seg["end"],
-                                 seg.get("speaker", ""), seg["text"]])
-        content = buf.getvalue()
-        media_type = "text/csv"
-
-    else:
-        raise HTTPException(400, f"Formato non supportato: {fmt}")
+    try:
+        content, media_type = render_export(segments, fmt, variant)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
     filename = jobs[job_id].get("title") or jobs[job_id].get("filename", "transcript")
     safe_name = re.sub(r"[^\w\-]", "_", Path(filename).stem)
@@ -2050,3 +2054,19 @@ def export_transcript(job_id: str, fmt: str, variant: str = "speakers"):
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{safe_name}_{suffix}.{fmt}"'},
     )
+
+
+def _check_edit_version(job_id, version, required=True):
+    if job_id not in jobs:
+        raise HTTPException(404, 'Job non trovato')
+    if _is_job_active(jobs[job_id]):
+        raise HTTPException(409, 'Elaborazione in corso')
+    _load_job_from_disk(job_id)
+    current = jobs[job_id].get('version') or legacy_version(_job_dir(job_id), jobs[job_id].get('segments', []))
+    if (required and not version) or (version and version != current):
+        raise HTTPException(409, 'Versione modificata: ricarica prima di applicare')
+    return jobs[job_id]
+
+
+from backend.review import register_review_routes
+register_review_routes(app, sys.modules[__name__])

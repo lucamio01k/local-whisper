@@ -1,7 +1,7 @@
 const BASE = '/api'
 
-export async function fetchModels() {
-  const r = await fetch(`${BASE}/models`)
+export async function fetchModels(backend = 'faster_whisper') {
+  const r = await fetch(`${BASE}/models?backend=${encodeURIComponent(backend)}`)
   if (!r.ok) throw new Error('Errore caricamento modelli')
   return r.json()
 }
@@ -47,8 +47,13 @@ export async function startTranscription({
   diarizationDevice,
   performanceProfile,
   transcriptionBackend,
+  glossary, diarizationPrecision, minSpeakers, maxSpeakers,
 }) {
   const form = new FormData()
+  if (glossary !== undefined) form.append('glossary', glossary)
+  if (diarizationPrecision) form.append('diarization_precision', diarizationPrecision)
+  if (minSpeakers) form.append('min_speakers', minSpeakers)
+  if (maxSpeakers) form.append('max_speakers', maxSpeakers)
   if (file) form.append('file', file)
   if (youtubeUrl) form.append('youtube_url', youtubeUrl)
   form.append('model_name', modelName)
@@ -122,13 +127,13 @@ export function subscribeJobEvents(jobId, onData, onError) {
   return () => es.close()
 }
 
-export async function updateSpeakers(jobId, mapping) {
+export async function updateSpeakers(jobId, mapping, version) {
   const r = await fetch(`${BASE}/jobs/${jobId}/speakers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mapping }),
+    body: JSON.stringify({ mapping, version }),
   })
-  if (!r.ok) throw new Error('Errore aggiornamento speaker')
+  if (!r.ok) { const error = await r.json().catch(() => ({})); throw new Error(error.detail || 'Errore aggiornamento speaker') }
   return r.json()
 }
 
@@ -192,8 +197,8 @@ export function audioUrl(jobId) {
   return `${BASE}/audio/${jobId}`
 }
 
-export function subscribeModelDownload(modelName, onData, onError) {
-  const es = new EventSource(`${BASE}/models/${modelName}/download`)
+export function subscribeModelDownload(modelName, onData, onError, backend = 'faster_whisper') {
+  const es = new EventSource(`${BASE}/models/${modelName}/download?backend=${encodeURIComponent(backend)}`)
   let completed = false
 
   es.onmessage = (e) => {
@@ -211,4 +216,15 @@ export function subscribeModelDownload(modelName, onData, onError) {
     if (!completed) onError?.()
   }
   return () => es.close()
+}
+
+export async function reviewRequest(path, method = 'GET', body) {
+  const response = await fetch(`${BASE}${path}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(data.detail || 'Operazione fallita')
+  return data
 }

@@ -1,0 +1,2 @@
+- fare si che il cli sia usabile globalmente
+- creare skill per codex e claude per usare local whisper
