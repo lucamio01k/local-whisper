@@ -57,6 +57,22 @@ class CliTests(unittest.TestCase):
             self.assertTrue((destination / "transcript.txt").exists())
             self.assertIn('"segments"', (destination / "transcript.json").read_text())
 
+    def test_speaker_export_groups_consecutive_turns_without_changing_source(self):
+        segments = [
+            {"id": 1, "start": 0.0, "end": 30.0, "speaker": "Speaker 1", "text": "Prima parte"},
+            {"id": 2, "start": 35.0, "end": 60.0, "speaker": "Speaker 1", "text": "Seconda parte"},
+            {"id": 3, "start": 61.0, "end": 62.0, "speaker": "Speaker 2", "text": "Risposta"},
+            {"id": 4, "start": 63.0, "end": 64.0, "speaker": "Speaker 1", "text": "Riprendo"},
+        ]
+        text, _ = render(segments, "txt", "speakers")
+        lines = text.splitlines()
+        self.assertEqual(len(lines), 3)
+        self.assertIn("Prima parte Seconda parte", lines[0])
+        self.assertIn("Speaker 2: Risposta", lines[1])
+        self.assertIn("Speaker 1: Riprendo", lines[2])
+        self.assertEqual(segments[0]["text"], "Prima parte")
+        self.assertEqual(len(render(segments, "srt", "speakers")[0].split("Speaker 1:")), 4)
+
     def test_forced_diarization_requires_a_token(self):
         args = cli.build_parser().parse_args(["transcribe", "input.mp3", "--diarize"])
         with self.assertRaisesRegex(RuntimeError, "token HuggingFace"):

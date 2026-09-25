@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for port in 8000 5173; do
   for pid in $(lsof -tiTCP:"$port" -sTCP:LISTEN || true); do
@@ -12,7 +13,8 @@ for port in 8000 5173; do
 done
 for attempt in {1..30}; do
   if ! lsof -tiTCP:8000 -sTCP:LISTEN >/dev/null 2>&1 && ! lsof -tiTCP:5173 -sTCP:LISTEN >/dev/null 2>&1; then
-    exec "$ROOT/start.sh"
+    open "$ROOT/Avvia Local Whisper.app"
+    exit 0
   fi
   sleep 0.5
 done

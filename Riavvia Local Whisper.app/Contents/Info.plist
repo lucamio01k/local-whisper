@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDisplayName</key>
+  <string>Riavvia Local Whisper</string>
+  <key>CFBundleExecutable</key>
+  <string>LocalWhisperRestart</string>
+  <key>CFBundleIconFile</key>
+  <string>LocalWhisper</string>
+  <key>CFBundleIdentifier</key>
+  <string>it.lucamiotti.local-whisper.restart</string>
+  <key>CFBundleName</key>
+  <string>Riavvia Local Whisper</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>12.0</string>
+</dict>
+</plist>

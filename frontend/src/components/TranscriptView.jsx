@@ -57,11 +57,25 @@ export default function TranscriptView({ jobId, segments, onSeek, onListen, curr
   const activeRef = useRef(null)
   const listRef = useRef(null)
   const [followAudio, setFollowAudio] = useState(false)
+  const [groupBySpeaker, setGroupBySpeaker] = useState(true)
 
   useEffect(() => { setLocalSegments(segments || []); getJob(jobId).then(j => setVersion(j.version)).catch(() => {}) }, [segments, jobId])
 
+  const displayedSegments = groupBySpeaker
+    ? localSegments.reduce((result, seg) => {
+        const previous = result[result.length - 1]
+        if (previous && previous.speaker === seg.speaker) {
+          previous.end = seg.end
+          previous.text = `${previous.text.trimEnd()} ${seg.text.trimStart()}`
+        } else {
+          result.push({ ...seg })
+        }
+        return result
+      }, [])
+    : localSegments
+
   // Highlight active segment
-  const activeIdx = localSegments.findIndex(
+  const activeIdx = displayedSegments.findIndex(
     (s) => currentTime >= s.start && currentTime < s.end
   )
 
@@ -341,9 +355,13 @@ export default function TranscriptView({ jobId, segments, onSeek, onListen, curr
         <input type="checkbox" className="accent-brand-500" checked={followAudio} onChange={e => setFollowAudio(e.target.checked)} />
         Segui audio nel testo
       </label>}
+      <label className="flex items-center gap-2 text-xs text-gray-400">
+        <input type="checkbox" className="accent-brand-500" checked={groupBySpeaker} onChange={e => setGroupBySpeaker(e.target.checked)} />
+        Accorpa interventi dello stesso speaker
+      </label>
       {/* Segments */}
       <div ref={listRef} onWheel={() => setFollowAudio(false)} onTouchStart={() => setFollowAudio(false)} onKeyDown={e => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(e.key)) setFollowAudio(false) }} className="space-y-1 max-h-[60vh] overflow-y-auto pr-1">
-        {localSegments
+        {displayedSegments
           .map((seg, index) => ({ seg, index }))
           .filter(({ seg }) => !search || seg.text.toLowerCase().includes(search.toLowerCase()))
           .map(({ seg, index }) => {

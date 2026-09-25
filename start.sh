@@ -2,10 +2,13 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Finder non carica .zshrc/.zprofile: includi percorsi Homebrew per avvio con doppio clic.
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 VENV="$ROOT/.venv"
 BACKEND="$ROOT/backend"
 FRONTEND="$ROOT/frontend"
 LOG_DIR="$ROOT/logs"
+APP_URL="http://localhost:5173"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -27,6 +30,20 @@ require_free_port() {
   fi
 }
 
+wait_for_url() {
+  local url="$1"
+  local label="$2"
+  local attempt
+  for attempt in {1..40}; do
+    if curl --silent --fail --output /dev/null "$url"; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  error "$label non ha risposto entro 10 secondi. Controlla i log in $LOG_DIR."
+  return 1
+}
+
 PIDS=()
 cleanup() {
   info "Arresto in corso..."
@@ -37,8 +54,15 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+if lsof -nP -iTCP:5173 -sTCP:LISTEN >/dev/null 2>&1; then
+  info "Local Whisper e gia in esecuzione: apro il browser."
+  if [[ "${LOCAL_WHISPER_NO_BROWSER:-0}" != "1" ]]; then
+    open "$APP_URL"
+  fi
+  exit 0
+fi
+
 require_free_port 8000
-require_free_port 5173
 
 if [[ ! -x "$VENV/bin/python" || ! -d "$FRONTEND/node_modules" ]]; then
   error "Dipendenze mancanti. Esegui $ROOT/setup.sh"
@@ -66,16 +90,21 @@ source "$VENV/bin/activate"
 python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --log-level warning --timeout-graceful-shutdown 10 >"$LOG_DIR/backend.log" 2>&1 &
 PIDS+=($!)
 
-sleep 2
+wait_for_url "http://127.0.0.1:8000/docs" "Backend"
 
 info "Avvio frontend React (porta 5173)..."
 cd "$FRONTEND"
 npm run dev >"$LOG_DIR/frontend.log" 2>&1 &
 PIDS+=($!)
 
+wait_for_url "$APP_URL" "Frontend"
+if [[ "${LOCAL_WHISPER_NO_BROWSER:-0}" != "1" ]]; then
+  open "$APP_URL"
+fi
+
 success "App avviata!"
 echo ""
-echo -e "  ${CYAN}Frontend:${NC} http://localhost:5173"
+echo -e "  ${CYAN}Frontend:${NC} $APP_URL (aperto nel browser)"
 echo -e "  ${CYAN}Backend:${NC}  http://localhost:8000"
 echo -e "  ${CYAN}API docs:${NC} http://localhost:8000/docs"
 echo -e "  ${CYAN}Log backend:${NC} $LOG_DIR/backend.log"

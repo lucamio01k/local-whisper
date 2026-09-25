@@ -173,10 +173,10 @@ def diagnostics(segments):
     return issues
 
 
-def reading_segments(segments, max_seconds=45):
+def reading_segments(segments):
     result = []
     for seg in segments:
-        if result and seg.get('speaker') == result[-1].get('speaker') and seg['start'] - result[-1]['end'] <= 2 and seg['end'] - result[-1]['start'] <= max_seconds:
+        if result and seg.get('speaker') == result[-1].get('speaker'):
             result[-1]['text'] = result[-1]['text'].rstrip() + ' ' + seg['text'].lstrip()
             result[-1]['end'] = seg['end']
         else:

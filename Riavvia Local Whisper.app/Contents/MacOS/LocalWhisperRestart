@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+LOG_DIR="$ROOT/logs"
+mkdir -p "$LOG_DIR"
+
+"$ROOT/restart.sh" >>"$LOG_DIR/restart.log" 2>&1
+status=$?
+if [[ "$status" -ne 0 ]]; then
+  open "$LOG_DIR/restart.log" || true
+fi
+exit "$status"
