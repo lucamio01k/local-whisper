@@ -25,6 +25,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 import aiofiles
 from fastapi import BackgroundTasks, Body, FastAPI, File, Form, HTTPException, UploadFile
@@ -62,7 +63,7 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 CONFIG_FILE = BASE_DIR / "config.json"
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024  # 4 GB
 UPLOAD_CHUNK_BYTES = 1024 * 1024
-ALLOWED_AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".mp4", ".mov", ".ogg", ".opus", ".webm"}
+ALLOWED_AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".mp4", ".mov", ".mpeg", ".mpg", ".ogg", ".opus", ".webm"}
 DIARIZATION_MODELS = {
     "community-1": "pyannote/speaker-diarization-community-1",
     "3.1": "pyannote/speaker-diarization-3.1",
@@ -74,6 +75,7 @@ DEFAULT_DIARIZATION_DEVICE = "auto"
 DIARIZATION_START_MODES = {"auto", "after", "off"}
 DIARIZATION_DEVICES = {"auto", "cpu", "mps"}
 DEFAULT_TRANSCRIPTION_BACKEND = "faster_whisper"
+WHISPER_BACKEND_PREFERENCES = {"auto", "whisper_cpp", "faster_whisper"}
 TRANSCRIPTION_BACKENDS = {
     "faster_whisper": {
         "label": "faster-whisper",
@@ -82,6 +84,10 @@ TRANSCRIPTION_BACKENDS = {
     "whisper_cpp": {
         "label": "whisper.cpp",
         "description": "Backend alternativo Metal/Core ML. Richiede whisper-cli e modelli GGML.",
+    },
+    "qwen3_asr": {
+        "label": "Qwen3-ASR (MLX)",
+        "description": "Locale su Mac Apple Silicon; include allineamento parole.",
     },
 }
 DEFAULT_PERFORMANCE_PROFILE = "balanced"
@@ -191,6 +197,11 @@ WHISPER_MODELS = [
     "tiny", "base", "small", "medium",
     "large-v2", "large-v3", "large-v3-turbo",
 ]
+QWEN_MODEL = "qwen3-asr-1.7b"
+QWEN_REPOS = (
+    "mlx-community/Qwen3-ASR-1.7B-8bit",
+    "mlx-community/Qwen3-ForcedAligner-0.6B-8bit",
+)
 
 APPROX_SIZES_MB = {
     "tiny": 75, "base": 145, "small": 465, "medium": 1500,
@@ -206,6 +217,7 @@ def load_config() -> dict:
         "hf_token": "",
         "default_model": "small",
         "transcription_backend": DEFAULT_TRANSCRIPTION_BACKEND,
+        "whisper_backend_preference": "auto",
         "diarization_enabled": True,
         "diarization_start": DEFAULT_DIARIZATION_START,
         "diarization_device": DEFAULT_DIARIZATION_DEVICE,
@@ -236,9 +248,14 @@ def _model_hf_id(model_name: str) -> str:
     return f"Systran/faster-whisper-{model_name}"
 
 
-def _validate_model_name(model_name: str) -> None:
-    if model_name not in WHISPER_MODELS:
-        raise HTTPException(400, f"Modello non supportato: {model_name}")
+def _validate_model_name(model_name: str, backend: str = DEFAULT_TRANSCRIPTION_BACKEND) -> None:
+    if backend not in TRANSCRIPTION_BACKENDS:
+        raise HTTPException(400, f"Backend non supportato: {backend}")
+    allowed = (QWEN_MODEL,) if backend == "qwen3_asr" else WHISPER_MODELS
+    if model_name not in allowed:
+        raise HTTPException(400, f"Modello {model_name} non compatibile con {backend}")
+    if backend == "qwen3_asr" and not _qwen_supported():
+        raise HTTPException(400, "Qwen3-ASR richiede Mac Apple Silicon")
 
 
 def _resolve_performance_profile(profile: Optional[str]) -> tuple[str, dict]:
@@ -248,6 +265,14 @@ def _resolve_performance_profile(profile: Optional[str]) -> tuple[str, dict]:
 
 def _resolve_transcription_backend(backend: Optional[str]) -> str:
     return backend if backend in TRANSCRIPTION_BACKENDS else DEFAULT_TRANSCRIPTION_BACKEND
+
+
+def _backend_for_model(model_name: str, preference: str = "auto") -> str:
+    if model_name == QWEN_MODEL:
+        return "qwen3_asr"
+    if preference in ("whisper_cpp", "faster_whisper"):
+        return preference
+    return "whisper_cpp" if platform.system() == "Darwin" and platform.machine() == "arm64" else "faster_whisper"
 
 
 def _resolve_diarization_start(value: Optional[str], enabled: bool = True) -> str:
@@ -334,6 +359,33 @@ def is_model_downloaded(model_name: str) -> bool:
     return bool(list(model_dir.glob("snapshots/*/model.bin")))
 
 
+def _qwen_supported() -> bool:
+    return platform.system() == "Darwin" and platform.machine() == "arm64"
+
+
+def _qwen_snapshot(repo_id: str) -> Optional[Path]:
+    cache = MODELS_DIR / ("models--" + repo_id.replace("/", "--"))
+    required = ('config.json', 'preprocessor_config.json', 'tokenizer_config.json',
+                'vocab.json', 'merges.txt')
+    for snapshot in (cache / "snapshots").glob("*"):
+        if all((snapshot / name).is_file() for name in required) and any(
+            file.is_file() and file.stat().st_size > 0 for file in snapshot.glob('*.safetensors')
+        ):
+            return snapshot
+    return None
+
+
+def _qwen_downloaded() -> bool:
+    return all(_qwen_snapshot(repo) is not None for repo in QWEN_REPOS)
+
+
+def _qwen_size_mb() -> Optional[int]:
+    snapshots = [_qwen_snapshot(repo) for repo in QWEN_REPOS]
+    if any(snapshot is None for snapshot in snapshots):
+        return None
+    return round(sum(file.stat().st_size for snapshot in snapshots for file in snapshot.glob('*.safetensors')) / 1048576)
+
+
 # ── Device detection ──────────────────────────────────────────────────────────
 
 def detect_device() -> tuple[str, str]:
@@ -358,7 +410,7 @@ def _find_audio_file(job_id: str) -> Optional[Path]:
     d = _job_dir(job_id)
     if not d.exists():
         return None
-    for ext in ("mp3", "wav", "m4a", "mp4", "mov", "ogg", "opus", "webm"):
+    for ext in ("mp3", "wav", "m4a", "mp4", "mov", "mpeg", "mpg", "ogg", "opus", "webm"):
         p = d / f"audio.{ext}"
         if p.exists():
             return p
@@ -438,6 +490,13 @@ def _save_job_locked(job_id):
         "created_at": job.get("created_at", datetime.now(timezone.utc).isoformat()),
         "model": job.get("model", ""),
         "transcription_backend": job.get("transcription_backend", DEFAULT_TRANSCRIPTION_BACKEND),
+        "status": job.get("status", "done"),
+        "error": job.get("error"),
+        "failure_stage": job.get("failure_stage"),
+        "retry_of": job.get("retry_of"),
+        "fallback_available": job.get("fallback_available", False),
+        "request_language": job.get("request_language"),
+        "request_diarize": job.get("request_diarize"),
         "language": job.get("language", ""),
         "duration": job.get("duration"),
         "has_audio": _find_audio_file(job_id) is not None,
@@ -517,6 +576,8 @@ def _load_job_locked(job_id: str) -> bool:
     if revision:
         segments = revision['segments']
         meta.update(revision.get('metadata', {}))
+    interrupted = meta.get('status') in ('queued', 'downloading_yt', 'processing', 'paused')
+    restored_status = 'error' if interrupted else meta.get('status') if meta.get('status') in ('error', 'canceled') else 'done'
     audio_path = _find_audio_file(job_id)
     existing = jobs.get(job_id, {})
     jobs[job_id] = {
@@ -524,28 +585,33 @@ def _load_job_locked(job_id: str) -> bool:
         **{k: meta.get(k) for k in QUALITY_FIELDS},
         "version": revision['version'] if revision else legacy_version(d, segments),
         "diagnostics": diagnostics(segments),
-        "status": "done",
-        "stage": "done",
-        "progress": 100,
+        "status": restored_status,
+        "stage": restored_status,
+        "progress": 0 if interrupted else 100,
         "message": existing.get("message", ""),
         "segments": segments,
         "language": meta.get("language"),
         "duration": meta.get("duration"),
-        "error": None,
+        "error": "Elaborazione interrotta dal riavvio; riprendi Qwen dai blocchi salvati o avvia un nuovo job." if interrupted else meta.get("error"),
+        "failure_stage": meta.get("failure_stage"),
+        "retry_of": meta.get("retry_of"),
+        "fallback_available": meta.get("fallback_available", False),
+        "request_language": meta.get("request_language"),
+        "request_diarize": meta.get("request_diarize"),
         "audio_url": f"/api/audio/{job_id}" if audio_path else None,
         "filename": meta.get("filename", ""),
         "title": meta.get("title", ""),
         "model": meta.get("model", ""),
-        "transcription_backend": meta.get("transcription_backend", DEFAULT_TRANSCRIPTION_BACKEND),
+        "transcription_backend": meta.get("transcription_backend"),
         "created_at": meta.get("created_at", ""),
         "youtube_url": meta.get("youtube_url", ""),
         "diarization_ran": (d / "diarized.json").exists(),
             "diarization_error": meta.get("diarization_error"),
             "diarization_model": meta.get("diarization_model", DEFAULT_DIARIZATION_MODEL),
             "diarization_mode": meta.get("diarization_mode", DEFAULT_DIARIZATION_MODE),
-            "diarization_start": meta.get("diarization_start", DEFAULT_DIARIZATION_START),
+            "diarization_start": meta.get("diarization_start"),
             "diarization_device": meta.get("diarization_device", DEFAULT_DIARIZATION_DEVICE),
-            "performance_profile": meta.get("performance_profile", DEFAULT_PERFORMANCE_PROFILE),
+            "performance_profile": meta.get("performance_profile"),
         "transcription_options": meta.get("transcription_options", {}),
         "metrics": meta.get("metrics", {}),
     }
@@ -695,6 +761,9 @@ def _run_diarization_worker(
     result_path = d / "diarization_result.json"
     stdout_path = d / "diarization_stdout.log"
     stderr_path = d / "diarization_stderr.log"
+    progress_path = d / "diarization_progress.json"
+    progress_path.unlink(missing_ok=True)
+    job.pop('diarization_progress', None)
 
     segments_path.write_text(json.dumps(raw_segments, ensure_ascii=False))
     request_path.write_text(json.dumps({
@@ -707,6 +776,7 @@ def _run_diarization_worker(
         "diarization_precision": job.get("diarization_precision", "segments"),
         "min_speakers": job.get("min_speakers"),
         "max_speakers": job.get("max_speakers"),
+        "progress_path": str(progress_path),
     }, ensure_ascii=False))
     result_path.unlink(missing_ok=True)
 
@@ -764,6 +834,13 @@ def _run_diarization_worker(
                         job["status"] = "processing"
                         job["stage"] = "diarizing"
                         job["message"] = "Diarizzazione in corso…"
+                    if progress_path.exists():
+                        try:
+                            update = json.loads(progress_path.read_text())
+                            job['diarization_progress'] = update
+                            job['message'] = update['message']
+                        except (OSError, ValueError, KeyError, TypeError):
+                            pass  # Progress reporting must not abort inference.
 
                 time.sleep(0.5)
 
@@ -790,6 +867,15 @@ def _run_diarization_worker(
             job["diarization_actual_model"] = result.get("turns", {}).get("model")
             return result["segments"]
         finally:
+            if proc.poll() is None:
+                if paused_process and os.name == 'posix':
+                    _signal_process(proc, signal.SIGCONT)
+                _terminate_process(proc)
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    _terminate_process(proc, force=True)
+                    proc.wait(timeout=3)
             job_processes.pop(job_id, None)
 
 
@@ -923,6 +1009,7 @@ def _run_whisper_cpp(
             start_new_session=(os.name == "posix"),
         )
         job_processes[job_id] = proc
+        job["backend_process_started"] = True
         paused_process = False
         started = time.monotonic()
         last_progress_pct = 20
@@ -1091,6 +1178,113 @@ def _run_faster_whisper_worker(job_id, audio_path, model_name, language, profile
             job_processes.pop(job_id, None)
 
 
+def _run_qwen_worker(job_id, audio_path, language, profile, progress):
+    from backend.qwen_worker import MEMORY_LIMIT_BYTES, STEP_TIMEOUT_SECONDS, process_memory_bytes
+    job = jobs[job_id]
+    audio = _prepare_diarization_audio(job_id, audio_path)
+    duration = _audio_duration(audio_path)
+    words = bool(profile['word_timestamps'] or job.get('diarization_precision') == 'words')
+    job['transcription_options'].update(device='mlx', word_timestamps=words, glossary_used=False)
+    folder = _job_dir(job_id)
+    request, output = folder / 'qwen_request.json', folder / 'qwen_result.json'
+    legacy_request = json.loads(request.read_text()) if request.exists() and job.get('qwen_resume') else None
+    if legacy_request:
+        legacy_request = {k: legacy_request.get(k) for k in ('audio', 'asr_model', 'language')}
+    progress_path = Path(str(output) + '.progress')
+    output.unlink(missing_ok=True)
+    progress_path.unlink(missing_ok=True)
+    atomic_json(request, dict(audio=audio, language=language or None, words=words,
+                              resume=bool(job.get('qwen_resume')), legacy_request=legacy_request,
+                              source_sha256=digest_file(audio_path),
+                              asr_model=str(_qwen_snapshot(QWEN_REPOS[0])),
+                              aligner_model=str(_qwen_snapshot(QWEN_REPOS[1]))))
+    progress('transcribing', 5, 'Caricamento Qwen3-ASR…')
+    with (folder / 'qwen_worker.log').open('w') as log:
+        qwen_python = BASE_DIR / '.venv-qwen' / 'bin' / 'python'
+        if not qwen_python.exists():
+            raise RuntimeError('Runtime Qwen assente: esegui setup.sh')
+        proc = subprocess.Popen([str(qwen_python), '-u', '-m', 'backend.qwen_worker', str(request), str(output)],
+                                cwd=str(BASE_DIR), stdout=log, stderr=log,
+                                start_new_session=(os.name == 'posix'))
+        job_processes[job_id] = proc
+        paused = False
+        last_step = time.monotonic()
+        last_poll = last_step
+        last_update = None
+        last_memory_check = 0
+        peak_footprint = 0
+        job['worker_memory_limit_bytes'] = MEMORY_LIMIT_BYTES
+        try:
+            while proc.poll() is None:
+                _check_canceled(job)
+                now = time.monotonic()
+                if paused:
+                    last_step += now - last_poll
+                last_poll = now
+                if job.get('pause_requested'):
+                    if not paused and os.name == 'posix':
+                        _signal_process(proc, signal.SIGSTOP)
+                        paused = True
+                    job.update(status='paused', stage='paused', previous_stage='transcribing')
+                else:
+                    if paused and os.name == 'posix':
+                        _signal_process(proc, signal.SIGCONT)
+                        paused = False
+                    if progress_path.exists():
+                        update = json.loads(progress_path.read_text())
+                        if update != last_update:
+                            last_update = update
+                            last_step = now
+                            end = update['end']
+                            phase = update.get('phase', 'asr')
+                            pct = (70 + int(update.get('fraction', 0) * 10)
+                                   if phase == 'alignment' else
+                                   5 if phase == 'loading' else
+                                   min(70, 20 + int(end / max(duration, 1) * 50)))
+                            progress('transcribing', pct, update.get('message') or
+                                     f'Trascritto {end:.1f}s / {duration:.1f}s')
+                            job['eta_seconds'] = update.get('eta_seconds')
+                            job['eta_phase'] = phase
+                            job['qwen_phase_progress'] = (
+                                round(update.get('fraction', 0) * 100) if phase == 'alignment'
+                                else round(100 * end / max(duration, 1)) if phase == 'asr' else None)
+                    if now - last_step > STEP_TIMEOUT_SECONDS:
+                        raise RuntimeError('Qwen: nessun blocco completato entro 5 minuti. '
+                                           'Worker arrestato per evitare elaborazione senza fine; '
+                                           'blocchi completati salvati in qwen_partial.json.')
+                if now - last_memory_check >= 1:
+                    last_memory_check = now
+                    footprint = process_memory_bytes(proc.pid)
+                    if footprint is not None:
+                        job['worker_memory_bytes'] = footprint
+                        peak_footprint = max(peak_footprint, footprint)
+                        job['metrics']['qwen_peak_process_bytes'] = peak_footprint
+                        if footprint > MEMORY_LIMIT_BYTES:
+                            raise RuntimeError('Qwen: superato limite memoria processo di 4 GiB. '
+                                               'Worker arrestato per proteggere memoria del Mac; '
+                                               'blocchi completati salvati in qwen_partial.json.')
+                time.sleep(.2)
+            _check_canceled(job)
+            if not output.exists():
+                raise RuntimeError('Worker Qwen terminato senza risultato')
+            result = json.loads(output.read_text())
+            if proc.returncode or not result.get('ok'):
+                raise RuntimeError(result.get('error') or 'Worker Qwen fallito')
+            job['metrics'].update(result['metrics'])
+            return result['segments'], {'language': result['language'], 'duration': duration}
+        finally:
+            if proc.poll() is None:
+                if paused and os.name == 'posix': _signal_process(proc, signal.SIGCONT)
+                _terminate_process(proc)
+                try: proc.wait(timeout=8)
+                except subprocess.TimeoutExpired:
+                    _terminate_process(proc, force=True)
+                    proc.wait(timeout=3)
+            job_processes.pop(job_id, None)
+            job['worker_memory_bytes'] = None
+            job['eta_seconds'] = None
+
+
 # ── Background task: transcribe ───────────────────────────────────────────────
 
 @heavy_job
@@ -1134,10 +1328,10 @@ def _run_transcription(
         job["diarization_device"] = diarization_device
         job["transcription_options"] = {
             "backend": backend,
-            "beam_size": profile["beam_size"],
-            "best_of": profile["best_of"],
             "word_timestamps": profile["word_timestamps"],
         }
+        if backend != 'qwen3_asr':
+            job['transcription_options'].update(beam_size=profile['beam_size'], best_of=profile['best_of'])
         metrics = job.setdefault("metrics", {})
         transcribe_started = time.monotonic()
         if backend == "whisper_cpp":
@@ -1152,6 +1346,8 @@ def _run_transcription(
                 "alignment": info.get("alignment"),
                 "device": info.get("device"),
             })
+        elif backend == 'qwen3_asr':
+            raw_segments, info = _run_qwen_worker(job_id, audio_path, language, profile, progress)
         else:
             raw_segments, info = _run_faster_whisper_worker(job_id, audio_path, model_name, language, profile, progress)
         progress("transcribing", 82, "Trascrizione completata.")
@@ -1211,11 +1407,12 @@ def _run_transcription(
         job["cancelable"] = False
         job["segments"] = final_segments
         job["metrics"]["total_seconds"] = round(time.monotonic() - transcribe_started, 3)
-        save_job_to_disk(job_id)
         progress("done", 100, "Completato.")
         job["status"] = "done"
+        save_job_to_disk(job_id)
 
     except Exception as exc:
+        job["failure_stage"] = job.get("stage")
         (_job_dir(job_id) / "transcription_error.log").write_text(
             traceback.format_exc(), encoding="utf-8"
         )
@@ -1228,9 +1425,16 @@ def _run_transcription(
             job["status"] = "error"
             job["stage"] = "error"
             job["message"] = str(exc)
+            job["fallback_available"] = bool(
+                job.get("transcription_backend") == "whisper_cpp"
+                and job.get("backend_process_started")
+                and job.get("failure_stage") == "transcribing"
+                and _find_audio_file(job_id)
+            )
         job["error"] = str(exc)
         job["pausable"] = False
         job["cancelable"] = False
+        save_job_to_disk(job_id)
 
 
 # ── Background task: re-diarize existing job ─────────────────────────────────
@@ -1308,8 +1512,8 @@ def _run_rediarization(
         job["stage"] = "done"
         job["progress"] = 100
         job["message"] = "Diarizzazione completata."
-        save_job_to_disk(job_id)
         job["status"] = "done"
+        save_job_to_disk(job_id)
 
     except Exception as exc:
         canceled = job.get("cancel_requested")
@@ -1374,8 +1578,14 @@ def post_config(body: dict):
         cfg["performance_profile"] = body["performance_profile"]
     if body.get("transcription_backend") in TRANSCRIPTION_BACKENDS:
         cfg["transcription_backend"] = body["transcription_backend"]
-    if body.get("default_model") in WHISPER_MODELS:
-        cfg["default_model"] = body["default_model"]
+    if body.get("whisper_backend_preference") in WHISPER_BACKEND_PREFERENCES:
+        cfg["whisper_backend_preference"] = body["whisper_backend_preference"]
+    requested_model = body.get("default_model", cfg.get("default_model"))
+    requested_backend = (_backend_for_model(requested_model, cfg["whisper_backend_preference"])
+                         if "whisper_backend_preference" in body else
+                         cfg.get("transcription_backend", DEFAULT_TRANSCRIPTION_BACKEND))
+    _validate_model_name(requested_model, requested_backend)
+    cfg["default_model"] = requested_model
     if incoming_token:
         cfg["hf_token"] = incoming_token
     elif token_present and not cfg.get("hf_token"):
@@ -1392,21 +1602,66 @@ def post_config(body: dict):
 
 @app.get("/api/models")
 def list_models(backend: str = "faster_whisper"):
+    if backend not in TRANSCRIPTION_BACKENDS:
+        raise HTTPException(400, f"Backend non supportato: {backend}")
+    if backend == "qwen3_asr":
+        return [{"name": QWEN_MODEL, "downloaded": _qwen_downloaded(),
+                 "supported": _qwen_supported(), "size_mb": _qwen_size_mb()}]
     return [
-        {"name": n, "downloaded": bool(_whisper_cpp_model_path(n)) if backend == "whisper_cpp" else is_model_downloaded(n), "size_mb": APPROX_SIZES_MB.get(n, 0)}
+        {"name": n,
+         "downloaded": bool(_whisper_cpp_model_path(n)) if backend == "whisper_cpp" else is_model_downloaded(n),
+         "size_mb": round(_whisper_cpp_model_path(n).stat().st_size / (1024 * 1024)) if backend == "whisper_cpp" and _whisper_cpp_model_path(n) else APPROX_SIZES_MB.get(n, 0)}
         for n in WHISPER_MODELS
+    ]
+
+
+@app.get("/api/model-catalog")
+def model_catalog():
+    preference = load_config().get("whisper_backend_preference", "auto")
+    whisper_backend = _backend_for_model("large-v3-turbo", preference)
+    return [{**item, "backend": whisper_backend} for item in list_models(whisper_backend)] + [
+        {**item, "backend": "qwen3_asr"} for item in list_models("qwen3_asr")
     ]
 
 
 @app.get("/api/models/{model_name}/download")
 async def download_model_sse(model_name: str, backend: str = "faster_whisper"):
-    _validate_model_name(model_name)
+    _validate_model_name(model_name, backend)
 
     async def generator():
         def send(data: dict) -> str:
             return f"data: {json.dumps(data)}\n\n"
 
         yield send({"status": "starting", "progress": 0})
+
+        if backend == "qwen3_asr":
+            loop = asyncio.get_running_loop()
+            state = {"progress": 0, "error": None}
+
+            def download_qwen():
+                from huggingface_hub import snapshot_download
+                try:
+                    for index, repo in enumerate(QWEN_REPOS):
+                        if _qwen_snapshot(repo) is None:
+                            snapshot_download(repo_id=repo, cache_dir=str(MODELS_DIR),
+                                              allow_patterns=["*.json", "*.safetensors", "*.model", "*.txt"],
+                                              max_workers=2)
+                        if _qwen_snapshot(repo) is None:
+                            raise RuntimeError(f"Download incompleto: {repo}")
+                        state["progress"] = 45 if index == 0 else 95
+                except Exception as exc:
+                    state["error"] = str(exc)
+
+            future = loop.run_in_executor(None, download_qwen)
+            while not future.done():
+                yield send({"status": "downloading", "progress": state["progress"]})
+                await asyncio.sleep(1)
+            await future
+            if state["error"]:
+                yield send({"status": "error", "error": state["error"]})
+            else:
+                yield send({"status": "done", "progress": 100})
+            return
 
         if backend == 'whisper_cpp':
             import httpx
@@ -1522,7 +1777,6 @@ async def create_transcription_job(
     min_speakers: Optional[int] = Form(None),
     max_speakers: Optional[int] = Form(None),
 ):
-    _validate_model_name(model_name)
     expected_speakers = _normalize_expected_speakers(expected_speakers)
 
     cfg = load_config()
@@ -1530,12 +1784,11 @@ async def create_transcription_job(
     diarization_precision = diarization_precision or cfg.get("diarization_precision", "segments")
     _validate_quality_options(diarization_precision, glossary, expected_speakers, min_speakers, max_speakers)
     hf_token = cfg.get("hf_token", "")
-    diarization_enabled = bool(cfg.get("diarization_enabled", True))
     diarization_model = cfg.get("diarization_model", DEFAULT_DIARIZATION_MODEL)
     diarization_mode = diarization_mode or cfg.get("diarization_mode", DEFAULT_DIARIZATION_MODE)
     diarization_start = _resolve_diarization_start(
         diarization_start or cfg.get("diarization_start", DEFAULT_DIARIZATION_START),
-        diarization_enabled,
+        diarize,
     )
     diarization_device = _resolve_diarization_device(
         diarization_device or cfg.get("diarization_device", DEFAULT_DIARIZATION_DEVICE)
@@ -1546,11 +1799,20 @@ async def create_transcription_job(
         performance_profile or cfg.get("performance_profile", DEFAULT_PERFORMANCE_PROFILE)
     )
     transcription_backend = _resolve_transcription_backend(
-        transcription_backend or cfg.get("transcription_backend", DEFAULT_TRANSCRIPTION_BACKEND)
+        transcription_backend or _backend_for_model(model_name, cfg.get("whisper_backend_preference", "auto"))
     )
-    diarize = bool(diarize and diarization_enabled and diarization_start != "off")
+    _validate_model_name(model_name, transcription_backend)
+    if transcription_backend == "qwen3_asr" and not _qwen_downloaded():
+        raise HTTPException(400, "Scarica Qwen3-ASR e allineatore prima della trascrizione")
+    diarize = bool(diarize and diarization_start != "off")
     if diarize and not hf_token:
-        diarize = False
+        raise HTTPException(400, "Token HuggingFace necessario per la diarizzazione: configurarlo nelle Impostazioni")
+    if not diarize:
+        diarization_precision = "segments"
+        expected_speakers = None
+        min_speakers = max_speakers = None
+    elif diarization_precision == "words":
+        performance_profile = "quality"
 
     job_id = str(uuid.uuid4())
     job_dir = _job_dir(job_id)
@@ -1575,6 +1837,8 @@ async def create_transcription_job(
         "filename": "",
         "title": "",
         "model": model_name,
+        "request_language": language,
+        "request_diarize": diarize,
         "transcription_backend": transcription_backend,
         "created_at": now,
         "youtube_url": youtube_url or "",
@@ -1674,12 +1938,16 @@ async def create_transcription_job(
                 jobs[job_id]["error"] = str(exc)
                 jobs[job_id]["message"] = str(exc)
 
+        save_job_to_disk(job_id)
         background_tasks.add_task(download_yt_then_transcribe)
         return {"job_id": job_id}
     else:
+        jobs.pop(job_id, None)
+        shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(400, "Fornire un file o un URL YouTube")
 
     jobs[job_id]["status"] = "queued"
+    save_job_to_disk(job_id)
     background_tasks.add_task(
         _run_transcription,
         job_id,
@@ -1699,17 +1967,127 @@ async def create_transcription_job(
     return {"job_id": job_id}
 
 
+@app.post("/api/jobs/{job_id}/retry-faster-whisper")
+def retry_with_faster_whisper(job_id: str, background_tasks: BackgroundTasks):
+    original = jobs.get(job_id)
+    if original is None and _load_job_from_disk(job_id):
+        original = jobs[job_id]
+    if not original:
+        raise HTTPException(404, "Job non trovato")
+    if original.get("status") != "error" or not original.get("fallback_available"):
+        raise HTTPException(409, "Riprova con faster-whisper non disponibile per questo job")
+    audio = _find_audio_file(job_id)
+    if not audio:
+        raise HTTPException(409, "Audio originale non disponibile")
+    _validate_model_name(original["model"], "faster_whisper")
+    if not is_model_downloaded(original["model"]):
+        raise HTTPException(409, "Scarica il modello faster-whisper prima di riprovare")
+
+    new_id = str(uuid.uuid4())
+    folder = _job_dir(new_id)
+    folder.mkdir(parents=True, exist_ok=False)
+    try:
+        dest = folder / audio.name
+        shutil.copy2(audio, dest)
+    except Exception:
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
+    cfg = load_config()
+    new_job = {
+        key: copy.deepcopy(original.get(key)) for key in (
+            "glossary", "diarization_precision", "min_speakers", "max_speakers",
+            "expected_speakers", "diarization_model", "diarization_mode",
+            "diarization_start", "diarization_device", "performance_profile",
+            "model", "request_language", "request_diarize", "filename", "title", "youtube_url",
+        )
+    }
+    new_job.update(status="queued", stage="queued", progress=0, message="In attesa…",
+                   segments=[], language=None, duration=None, error=None,
+                   audio_url=f"/api/audio/{new_id}", transcription_backend="faster_whisper",
+                   created_at=datetime.now(timezone.utc).isoformat(), retry_of=job_id,
+                   diarization_ran=False, diarization_error=None, metrics={})
+    _set_job_control_defaults(new_job)
+    jobs[new_id] = new_job
+    background_tasks.add_task(
+        _run_transcription, new_id, str(dest), new_job["model"], new_job.get("request_language"),
+        bool(new_job.get("request_diarize")), cfg.get("hf_token", ""),
+        new_job.get("expected_speakers"), new_job.get("diarization_model") or DEFAULT_DIARIZATION_MODEL,
+        new_job.get("diarization_mode") or DEFAULT_DIARIZATION_MODE,
+        new_job.get("diarization_start") or DEFAULT_DIARIZATION_START,
+        new_job.get("diarization_device") or DEFAULT_DIARIZATION_DEVICE,
+        new_job.get("performance_profile") or DEFAULT_PERFORMANCE_PROFILE, "faster_whisper",
+    )
+    return {"job_id": new_id}
+
+
+def _qwen_resume_details(job_id, job):
+    if (job.get('transcription_backend') != 'qwen3_asr'
+            or job.get('status') not in ('error', 'canceled') or not _find_audio_file(job_id)):
+        return None
+    path = _job_dir(job_id) / 'qwen_partial.json'
+    if not path.exists():
+        return None
+    try:
+        saved = json.loads(path.read_text())
+        covered, duration = float(saved['covered_seconds']), float(saved['duration'])
+        if 0 < covered <= duration:
+            return dict(covered_seconds=covered, duration=duration)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+@app.post('/api/jobs/{job_id}/resume-qwen')
+def resume_qwen_job(job_id: str, background_tasks: BackgroundTasks):
+    with LOCK:
+        return _resume_qwen_job_locked(job_id, background_tasks)
+
+
+def _resume_qwen_job_locked(job_id: str, background_tasks: BackgroundTasks):
+    if job_id not in jobs:
+        _load_job_from_disk(job_id)
+    job = jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, 'Job non trovato')
+    details = _qwen_resume_details(job_id, job)
+    if not details:
+        raise HTTPException(409, 'Ripresa Qwen non disponibile: nessun checkpoint o job ancora attivo')
+    _validate_model_name(job['model'], 'qwen3_asr')
+    if not _qwen_downloaded():
+        raise HTTPException(409, 'Modelli Qwen non disponibili')
+    cfg = load_config()
+    diarize = bool(job.get('request_diarize') and job.get('diarization_start') != 'off')
+    if diarize and not cfg.get('hf_token'):
+        raise HTTPException(400, 'Token HuggingFace necessario per diarizzazione')
+    audio = _find_audio_file(job_id)
+    job.update(status='queued', stage='queued', progress=0, error=None,
+               message=f"Ripresa dai blocchi salvati: {details['covered_seconds']:.0f}s",
+               pause_requested=False, cancel_requested=False, qwen_resume=True,
+               segments=[], diarization_error=None, eta_seconds=None)
+    _set_job_control_defaults(job)
+    save_job_to_disk(job_id)
+    background_tasks.add_task(
+        _run_transcription, job_id, str(audio), job['model'], job.get('request_language'),
+        diarize, cfg.get('hf_token', ''), job.get('expected_speakers'),
+        job.get('diarization_model') or DEFAULT_DIARIZATION_MODEL,
+        job.get('diarization_mode') or DEFAULT_DIARIZATION_MODE,
+        job.get('diarization_start') or DEFAULT_DIARIZATION_START,
+        job.get('diarization_device') or DEFAULT_DIARIZATION_DEVICE,
+        job.get('performance_profile') or DEFAULT_PERFORMANCE_PROFILE, 'qwen3_asr')
+    return dict(job_id=job_id, resumed_seconds=details['covered_seconds'])
+
+
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str):
     if job_id not in jobs:
-        if _load_job_from_disk(job_id):
-            return jobs[job_id]
-        raise HTTPException(404, "Job non trovato")
+        if not _load_job_from_disk(job_id):
+            raise HTTPException(404, "Job non trovato")
     if not _is_job_active(jobs[job_id]):
         try:
             _load_job_from_disk(job_id)
         except Exception as exc:
             print(f"[warn] Errore refresh job {job_id}: {exc}")
+    jobs[job_id]['qwen_resume_available'] = _qwen_resume_details(job_id, jobs[job_id])
     return jobs[job_id]
 
 
@@ -1719,15 +2097,19 @@ async def job_events(job_id: str):
         raise HTTPException(404)
 
     async def generator():
-        last_progress, last_status = -1, ""
+        last_state = None
         while True:
             job = jobs.get(job_id, {})
             status = job.get("status", "")
             progress = job.get("progress", 0)
-            if status != last_status or progress != last_progress:
+            if status in ('error', 'canceled'):
+                job['qwen_resume_available'] = _qwen_resume_details(job_id, job)
+            memory = job.get('worker_memory_bytes')
+            state = (status, progress, job.get('stage'), job.get('message'),
+                     int(memory / 1024**2) if memory is not None else None, job.get('eta_seconds'))
+            if state != last_state:
                 yield f"data: {json.dumps({**job, 'id': job_id})}\n\n"
-                last_progress = progress
-                last_status = status
+                last_state = state
             if status in ("done", "error", "canceled"):
                 break
             await asyncio.sleep(0.5)
@@ -1980,7 +2362,7 @@ def get_history():
                 job = jobs[job_id]
             except Exception as exc:
                 print(f"[warn] Errore refresh history job {job_id}: {exc}")
-        if job.get("status") not in ("done", "processing", "paused", "queued", "downloading_yt"):
+        if job.get("status") not in ("done", "error", "canceled", "processing", "paused", "queued", "downloading_yt"):
             continue
         d = _job_dir(job_id)
         result.append({
@@ -2017,6 +2399,10 @@ def serve_audio(job_id: str):
     audio = _find_audio_file(job_id)
     if not audio:
         raise HTTPException(404)
+    if audio.suffix in {".mpeg", ".mpg"}:
+        normalized = _job_dir(job_id) / "normalized.wav"
+        if normalized.is_file():
+            audio = normalized
     return FileResponse(str(audio))
 
 
@@ -2052,7 +2438,7 @@ def export_transcript(job_id: str, fmt: str, variant: str = "speakers"):
     return StreamingResponse(
         iter([content]),
         media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}_{suffix}.{fmt}"'},
+        headers={"Content-Disposition": f'attachment; filename="transcript_{suffix}.{fmt}"; filename*=UTF-8\'\'{quote(f"{safe_name}_{suffix}.{fmt}")}'},
     )
 
 

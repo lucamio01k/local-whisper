@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Mic, ChevronDown, ChevronUp, Loader, AlertTriangle,
-  ArrowLeft, Pause, Play, Square,
+  ArrowLeft, Pause, Play, Square, Plus, Pencil, Check, X,
 } from 'lucide-react'
 import FileUpload from '../components/FileUpload'
 import DiarizationPanel from '../components/DiarizationPanel'
@@ -13,7 +13,9 @@ import TranscriptView from '../components/TranscriptView'
 import ExportPanel from '../components/ExportPanel'
 import {
   startTranscription, subscribeJobEvents, fetchConfig, getJob,
-  audioUrl, pauseJob, resumeJob, cancelJob,
+  audioUrl, pauseJob, resumeJob, cancelJob, resumeQwenJob,
+  retryWithFasterWhisper, renameJob,
+  fetchModels, subscribeModelDownload,
 } from '../api'
 
 const LANGUAGES = [
@@ -51,6 +53,7 @@ const PROCESS_STEPS = [
 const BACKEND_LABELS = {
   faster_whisper: 'faster-whisper',
   whisper_cpp: 'whisper.cpp',
+  qwen3_asr: 'Qwen3-ASR (MLX)',
 }
 
 const PROFILE_LABELS = {
@@ -60,8 +63,8 @@ const PROFILE_LABELS = {
 }
 
 const DIARIZATION_START_LABELS = {
-  auto: 'Automatica',
-  after: 'Dopo, manuale',
+  auto: 'Dopo la trascrizione',
+  after: 'Avvio manuale',
   off: 'Spenta',
 }
 
@@ -89,6 +92,7 @@ function getElapsedSeconds(job, nowMs) {
 }
 
 function getPhaseProgress(job) {
+  if (job?.stage === 'transcribing' && job.transcription_backend === 'qwen3_asr' && Number.isFinite(job.qwen_phase_progress)) return job.qwen_phase_progress
   const msgPct = job?.message?.match(/(\d{1,3})%/)
   if (msgPct) return Math.min(100, Number(msgPct[1]))
   if (job?.stage === 'transcribing') {
@@ -118,8 +122,8 @@ export default function TranscribePage() {
   const [model, setModel] = useState('small')
   const [modelReady, setModelReady] = useState(false)
   const [language, setLanguage] = useState('')
-  const [transcriptionBackend, setTranscriptionBackend] = useState('faster_whisper')
   const [performanceProfile, setPerformanceProfile] = useState('balanced')
+  const [qwenWordTimes, setQwenWordTimes] = useState(false)
   const [diarize, setDiarize] = useState(true)
   const [expectedSpeakers, setExpectedSpeakers] = useState('')
   const [speakerMode, setSpeakerMode] = useState('auto')
@@ -134,14 +138,23 @@ export default function TranscribePage() {
   const [maxSpeakers, setMaxSpeakers] = useState('')
 
   const [job, setJob] = useState(null) // current job state
+  const [uploadKey, setUploadKey] = useState(0)
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
+  const [titleError, setTitleError] = useState('')
+  const [savingTitle, setSavingTitle] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [fallbackModelReady, setFallbackModelReady] = useState(false)
+  const [fallbackDownload, setFallbackDownload] = useState(null)
+  const [fallbackError, setFallbackError] = useState('')
 
   const [audioPlaying, setAudioPlaying] = useState(false)
   const playerRef = useRef(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [nowTick, setNowTick] = useState(Date.now())
   const timeRef = useRef(null)
+  const previousPreloadJobId = useRef(preloadJobId)
 
   // Load diarization default from config
   useEffect(() => {
@@ -149,8 +162,8 @@ export default function TranscribePage() {
       setGlossary(cfg.glossary || '')
       setDiarizationPrecision(cfg.diarization_precision || 'segments')
       setModel(cfg.default_model || 'small')
-      setTranscriptionBackend(cfg.transcription_backend || 'faster_whisper')
-      setPerformanceProfile(cfg.performance_profile || 'balanced')
+      if (cfg.default_model === 'qwen3-asr-1.7b') setQwenWordTimes(cfg.performance_profile === 'quality')
+      else setPerformanceProfile(cfg.performance_profile || 'balanced')
       setDiarize((cfg.diarization_enabled ?? true) && cfg.diarization_start !== 'off')
       setTokenConfigured(Boolean(cfg.hf_token_set))
       setDiarizationMode(cfg.diarization_mode || 'conservative')
@@ -162,9 +175,26 @@ export default function TranscribePage() {
   // If opened from History (?job=<id>), load the existing job
   useEffect(() => {
     if (!preloadJobId) return
+    let active = true
     getJob(preloadJobId)
-      .then(data => setJob({ ...data, id: preloadJobId }))
+      .then(data => { if (active) setJob({ ...data, id: preloadJobId }) })
       .catch(() => {})
+    return () => { active = false }
+  }, [preloadJobId])
+
+  useEffect(() => {
+    if (previousPreloadJobId.current && !preloadJobId) {
+      setJob(null)
+      setFile(null)
+      setYtUrl(null)
+      setUploadKey(key => key + 1)
+      setError('')
+      setEditingTitle(false)
+      setTitleError('')
+      setCurrentTime(0)
+      setAudioPlaying(false)
+    }
+    previousPreloadJobId.current = preloadJobId
   }, [preloadJobId])
 
   useEffect(() => {
@@ -195,30 +225,51 @@ export default function TranscribePage() {
     return () => clearInterval(timer)
   }, [job?.id, job?.status])
 
+  useEffect(() => {
+    if (job?.status !== 'error' || !job.fallback_available) return
+    let alive = true
+    fetchModels('faster_whisper').then(models => {
+      if (alive) setFallbackModelReady(Boolean(models.find(item => item.name === job.model)?.downloaded))
+    }).catch(e => { if (alive) setFallbackError(e.message) })
+    return () => { alive = false }
+  }, [job?.id, job?.status, job?.fallback_available, job?.model])
+
   const diarizationOptions = { enabled: diarize, speakerMode, expectedSpeakers, minSpeakers, maxSpeakers, start: diarizationStart }
   const diarizationErrors = speakerErrors(diarizationOptions)
-  const canStart = !Object.keys(diarizationErrors).length && (file || ytUrl) && model && (transcriptionBackend === 'whisper_cpp' || modelReady)
+  const needsWordTimes = diarize && diarizationPrecision === 'words'
+  const effectiveProfile = model === 'qwen3-asr-1.7b'
+    ? (qwenWordTimes || needsWordTimes ? 'quality' : 'balanced')
+    : (needsWordTimes ? 'quality' : performanceProfile)
+  const canStart = !Object.keys(diarizationErrors).length && (!diarize || tokenConfigured === true) && (file || ytUrl) && model && modelReady
 
   async function handleStart() {
     if (!canStart) return
     setLoading(true)
     setError('')
     setJob(null)
+    setEditingTitle(false)
+    setTitleError('')
     try {
       const { job_id } = await startTranscription({
-        glossary, diarizationPrecision,
+        glossary, diarizationPrecision: diarize ? diarizationPrecision : 'segments',
         ...diarizationRequest(diarizationOptions),
         file: file || undefined,
         youtubeUrl: ytUrl || undefined,
         modelName: model,
         language,
-        performanceProfile,
-        transcriptionBackend,
+        performanceProfile: effectiveProfile,
         diarizationMode,
         diarizationDevice,
       })
 
-      const initialJob = { status: 'queued', stage: 'queued', progress: 0, message: 'In coda…', segments: [] }
+      const initialJob = {
+        status: 'queued', stage: 'queued', progress: 0, message: 'In coda…', segments: [],
+        model, performance_profile: effectiveProfile,
+        request_diarize: diarize, diarization_start: diarize ? diarizationStart : 'off',
+        diarization_precision: diarize ? diarizationPrecision : 'segments',
+        expected_speakers: diarize && speakerMode === 'exact' ? Number(expectedSpeakers) : null,
+        transcription_options: { word_timestamps: effectiveProfile === 'quality' },
+      }
       setJob({ ...initialJob, id: job_id })
 
       const unsub = subscribeJobEvents(job_id, (data) => {
@@ -235,6 +286,47 @@ export default function TranscribePage() {
       setError(e.message)
       setLoading(false)
     }
+  }
+
+  async function handleRetryFaster() {
+    if (!job?.id) return
+    setLoading(true)
+    setError('')
+    try {
+      const { job_id } = await retryWithFasterWhisper(job.id)
+      setJob({ id: job_id, status: 'queued', stage: 'queued', progress: 0, message: 'In coda…', segments: [], transcription_backend: 'faster_whisper' })
+      const unsub = subscribeJobEvents(job_id, data => {
+        setJob({ ...data, id: job_id })
+        if (['done', 'error', 'canceled'].includes(data.status)) {
+          unsub()
+          setLoading(false)
+        }
+      }, () => {
+        setLoading(false)
+        setError('Connessione persa durante la trascrizione')
+      })
+    } catch (e) {
+      setError(e.message)
+      setLoading(false)
+    }
+  }
+
+  function handleDownloadFallback() {
+    if (!job?.model) return
+    setFallbackError('')
+    setFallbackDownload(0)
+    subscribeModelDownload(job.model, data => {
+      if (data.status === 'done') {
+        setFallbackDownload(null)
+        setFallbackModelReady(true)
+      } else if (data.status === 'error') {
+        setFallbackDownload(null)
+        setFallbackError(data.error || 'Download non riuscito')
+      } else setFallbackDownload(data.progress || 0)
+    }, () => {
+      setFallbackDownload(null)
+      setFallbackError('Connessione interrotta durante il download')
+    }, 'faster_whisper')
   }
 
   async function handlePause() {
@@ -275,18 +367,127 @@ export default function TranscribePage() {
     }
   }
 
+  async function handleResumeQwen() {
+    if (!job?.id) return
+    setLoading(true)
+    setError('')
+    try {
+      await resumeQwenJob(job.id)
+      setJob({ ...await getJob(job.id), id: job.id })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleNewTranscription() {
+    if (preloadJobId) {
+      navigate('/')
+      return
+    }
+    setJob(null)
+    setFile(null)
+    setYtUrl(null)
+    setUploadKey(key => key + 1)
+    setError('')
+    setEditingTitle(false)
+    setTitleError('')
+    setCurrentTime(0)
+    setAudioPlaying(false)
+  }
+
+  async function handleRename() {
+    const title = titleDraft.trim()
+    if (!title) {
+      setTitleError('Inserisci un titolo.')
+      return
+    }
+    if (title === (job.title || job.filename)) {
+      setEditingTitle(false)
+      return
+    }
+    setSavingTitle(true)
+    setTitleError('')
+    try {
+      await renameJob(job.id, title)
+      setJob(current => current?.id === job.id ? { ...current, title } : current)
+      setEditingTitle(false)
+    } catch (e) {
+      setTitleError(e.message)
+    } finally {
+      setSavingTitle(false)
+    }
+  }
+
   const isDone = job?.status === 'done'
   const hasError = job?.status === 'error'
   const isCanceled = job?.status === 'canceled'
+  const isTerminal = isDone || hasError || isCanceled
   const elapsedSeconds = getElapsedSeconds(job, nowTick)
   const phaseProgress = getPhaseProgress(job)
-  const backendLabel = BACKEND_LABELS[job?.transcription_backend] || BACKEND_LABELS[transcriptionBackend] || 'Backend'
-  const profileLabel = PROFILE_LABELS[job?.performance_profile] || PROFILE_LABELS[performanceProfile] || 'Profilo'
-  const diarizationStartLabel = DIARIZATION_START_LABELS[job?.diarization_start] || DIARIZATION_START_LABELS[diarize ? diarizationStart : 'off'] || 'Automatica'
+  const backendLabel = BACKEND_LABELS[job?.transcription_backend] || 'Non registrato'
+  const profileLabel = job?.transcription_backend === 'qwen3_asr'
+    ? (job?.transcription_options?.word_timestamps == null ? 'Non registrato' : job.transcription_options.word_timestamps ? 'Attivi' : 'Spenti')
+    : PROFILE_LABELS[job?.performance_profile] || 'Non registrato'
+  const diarizationStartLabel = job?.diarization_start ? DIARIZATION_START_LABELS[job.diarization_start] || 'Non registrato' : 'Non registrato'
+  const expectedCount = job?.expected_speakers
+  const peopleLabel = job?.request_diarize === false || job?.diarization_start === 'off' ? 'Disattivata' : expectedCount ? String(expectedCount) : job && 'expected_speakers' in job ? 'Rilevamento automatico' : 'Non registrato'
+  const assignmentLabel = job?.request_diarize === false || job?.diarization_start === 'off' ? 'Disattivata' : job?.diarization_precision === 'words' ? 'Per parola' : job?.diarization_precision === 'segments' ? 'Per segmento' : 'Non registrato'
+  const wordTimesLabel = job?.transcription_options?.word_timestamps == null ? 'Non registrato' : job.transcription_options.word_timestamps ? 'Attivi' : 'Spenti'
   const diarizationDeviceLabel = DIARIZATION_DEVICE_LABELS[job?.diarization_device] || DIARIZATION_DEVICE_LABELS[diarizationDevice] || 'Auto'
+  const jobStatusLabel = job?.status === 'processing'
+    ? STAGE_LABELS[job.stage] || 'In corso'
+    : STAGE_LABELS[job?.status] || 'In attesa'
 
   return (
     <div className="space-y-6">
+      {job?.id && (
+        <div className="card p-4 sm:p-5 space-y-3">
+          <div className="min-w-0">
+              <p className="text-xs text-gray-500">Audio corrente · {jobStatusLabel}</p>
+              {editingTitle ? (
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <input
+                    autoFocus
+                    className="input min-w-0 flex-1"
+                    aria-label="Titolo trascrizione"
+                    value={titleDraft}
+                    onChange={e => { setTitleDraft(e.target.value); setTitleError('') }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') handleRename()
+                      if (e.key === 'Escape') { setEditingTitle(false); setTitleError('') }
+                    }}
+                    disabled={savingTitle}
+                  />
+                  <button type="button" className="btn-ghost text-xs" onClick={handleRename} disabled={savingTitle}>
+                    <Check size={14} /> Salva
+                  </button>
+                  <button type="button" className="btn-ghost text-xs" onClick={() => { setEditingTitle(false); setTitleError('') }} disabled={savingTitle}>
+                    <X size={14} /> Annulla
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <h1 className="text-lg font-semibold text-white break-words">{job.title || job.filename || file?.name || 'Trascrizione'}</h1>
+                  {isTerminal && <button type="button" className="btn-ghost text-xs" onClick={() => { setTitleDraft(job.title || job.filename || ''); setTitleError(''); setEditingTitle(true) }}>
+                    <Pencil size={13} /> Rinomina
+                  </button>}
+                </div>
+              )}
+              {titleError && <p role="alert" className="text-xs text-red-400 mt-2">{titleError}</p>}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
+            {[
+              ['Modello', job.model || 'Non registrato'], ['Motore', backendLabel],
+              ['Tempi parola', wordTimesLabel], ['Diarizzazione', diarizationStartLabel],
+              ['Assegnazione speaker', assignmentLabel], ['Persone', peopleLabel],
+            ].map(([label, value]) => <div key={label} className="min-w-0 rounded-md bg-gray-900/60 border border-gray-800 px-3 py-2">
+              <p className="text-gray-500">{label}</p><p className="text-gray-200 mt-0.5 break-words">{value}</p>
+            </div>)}
+          </div>
+        </div>
+      )}
       {/* Banner "aperto dall'archivio" */}
       {preloadJobId && (
         <div className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-brand-900/20 border border-brand-500/20 text-sm">
@@ -302,6 +503,18 @@ export default function TranscribePage() {
         </div>
       )}
 
+      {isTerminal && (
+        <div className="card p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-gray-200">Pronto per un altro audio?</p>
+            <p className="text-xs text-gray-500 mt-1">Questo risultato resta nell’Archivio.</p>
+          </div>
+          <button type="button" className="btn-primary self-start sm:self-auto" onClick={handleNewTranscription}>
+            <Plus size={15} /> Nuova trascrizione
+          </button>
+        </div>
+      )}
+
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-8">
       {/* ── Left panel: controls ─────────────────────────────────────────────── */}
       <div className="space-y-6">
@@ -309,6 +522,7 @@ export default function TranscribePage() {
         <div className="card p-5 space-y-5">
           <h2 className="text-sm font-semibold text-gray-200 uppercase tracking-wider">Sorgente</h2>
           <FileUpload
+            key={uploadKey}
             onFile={(f) => { setFile(f); setYtUrl(null) }}
             onYouTube={(url) => { setYtUrl(url); setFile(null) }}
           />
@@ -317,7 +531,6 @@ export default function TranscribePage() {
         {/* Model */}
         <div className="card p-5">
           <ModelSelector
-            backend={transcriptionBackend}
             selected={model}
             onChange={setModel}
             onSelectedStatusChange={setModelReady}
@@ -350,25 +563,36 @@ export default function TranscribePage() {
                 {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
               </select>
             </div>
-            <div>
-              <label htmlFor="transcription-backend" className="label">Backend trascrizione</label>
-              <select id="transcription-backend" className="input" value={transcriptionBackend} onChange={e => setTranscriptionBackend(e.target.value)}>
-                <option value="faster_whisper">faster-whisper</option><option value="whisper_cpp">whisper.cpp</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor="transcription-profile" className="label">Profilo prestazioni</label>
-              <select id="transcription-profile" className="input" value={performanceProfile} onChange={e => setPerformanceProfile(e.target.value)}>
-                <option value="fast">Veloce</option><option value="balanced">Bilanciato</option><option value="quality">Qualità</option>
-              </select>
-            </div>
+            {model === 'qwen3-asr-1.7b' ? (
+              <div>
+                <label htmlFor="transcription-profile" className="label">Tempi parola Qwen</label>
+                <select id="transcription-profile" className="input" value={needsWordTimes ? 'quality' : qwenWordTimes ? 'quality' : 'balanced'} onChange={e => setQwenWordTimes(e.target.value === 'quality')} disabled={needsWordTimes}>
+                  <option value="balanced">Spenti</option>
+                  <option value="quality">Attivi</option>
+                </select>
+                <p className="text-xs text-gray-400 mt-1">Collocano le parole nell'audio. Non cambiano il testo riconosciuto né obbligano la diarizzazione per parola.</p>
+                <p className="text-xs text-gray-400 mt-1">Su audio lunghi, Spenti riduce i tempi. Qwen si arresta se supera 4 GiB di memoria per proteggere il Mac.</p>
+                {needsWordTimes && <p className="text-xs text-amber-300 mt-1">Attivi per questo job: assegnazione speaker Per parola selezionata.</p>}
+              </div>
+            ) : (
+              <div>
+                <label htmlFor="transcription-profile" className="label">Profilo prestazioni Whisper</label>
+                <select id="transcription-profile" className="input" value={needsWordTimes ? 'quality' : performanceProfile} onChange={e => setPerformanceProfile(e.target.value)} disabled={needsWordTimes}>
+                  <option value="fast">Veloce</option><option value="balanced">Bilanciato</option><option value="quality">Qualità + tempi parola</option>
+                </select>
+                {needsWordTimes && <p className="text-xs text-amber-300 mt-1">Qualità e tempi parola attivi per questo job: assegnazione speaker Per parola selezionata.</p>}
+              </div>
+            )}
             <div>
               <label htmlFor="transcription-glossary" className="label">Glossario registrazione</label>
               <textarea id="transcription-glossary" className="input w-full" maxLength={4000} placeholder="EMV, PSP, acquirer, issuer…" value={glossary} onChange={e => setGlossary(e.target.value)} />
               <p className="text-xs text-gray-500 mt-1">Suggerisce termini al modello, senza sostituzioni automatiche.</p>
+              {model === 'qwen3-asr-1.7b' && <p className="text-xs text-amber-400 mt-1">Qwen non usa glossario come suggerimento; testo resta invariato.</p>}
             </div>
           </div>
         </div>
+
+        {diarize && tokenConfigured === false && <p role="alert" className="text-sm text-amber-300">Configura il token HuggingFace nelle Impostazioni per avviare la diarizzazione.</p>}
 
         {/* Start button */}
         <button
@@ -425,6 +649,16 @@ export default function TranscribePage() {
                   Fase corrente: <span className="text-gray-300 font-mono">{phaseProgress}%</span>
                 </p>
               )}
+              {job.stage === 'transcribing' && Number.isFinite(job.eta_seconds) && (
+                <p className="text-xs text-gray-400">
+                  {job.eta_phase === 'alignment' ? 'Allineamento' : 'Trascrizione'} residuo stimato: circa {formatDuration(Math.ceil(job.eta_seconds))}
+                </p>
+              )}
+              {Number.isFinite(job.worker_memory_bytes) && (
+                <p className="text-xs text-gray-400">
+                  Memoria Qwen: {(job.worker_memory_bytes / 1024 ** 3).toFixed(1)} GiB / {(job.worker_memory_limit_bytes / 1024 ** 3).toFixed(0)} GiB limite
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-4 gap-2">
@@ -441,7 +675,7 @@ export default function TranscribePage() {
               })}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
               <div className="rounded-md bg-gray-900/60 border border-gray-800 px-3 py-2">
                 <p className="text-gray-500">Tempo</p>
                 <p className="text-gray-200 font-mono mt-0.5">{formatDuration(elapsedSeconds)}</p>
@@ -451,12 +685,16 @@ export default function TranscribePage() {
                 <p className="text-gray-200 mt-0.5 truncate">{backendLabel}</p>
               </div>
               <div className="rounded-md bg-gray-900/60 border border-gray-800 px-3 py-2">
-                <p className="text-gray-500">Profilo</p>
+                <p className="text-gray-500">{job?.transcription_backend === 'qwen3_asr' ? 'Tempi parola' : 'Profilo'}</p>
                 <p className="text-gray-200 mt-0.5 truncate">{profileLabel}</p>
               </div>
               <div className="rounded-md bg-gray-900/60 border border-gray-800 px-3 py-2">
-                <p className="text-gray-500">Speaker</p>
-                <p className="text-gray-200 mt-0.5 truncate">{diarizationStartLabel}</p>
+                <p className="text-gray-500">Persone</p>
+                <p className="text-gray-200 mt-0.5">{peopleLabel}</p>
+              </div>
+              <div className="rounded-md bg-gray-900/60 border border-gray-800 px-3 py-2">
+                <p className="text-gray-500">Diarizzazione</p>
+                <p className="text-gray-200 mt-0.5">{diarizationStartLabel}</p>
               </div>
             </div>
 
@@ -468,6 +706,8 @@ export default function TranscribePage() {
                 <p>Beam: <span className="text-gray-300">{job.transcription_options?.beam_size ?? 'auto'}</span></p>
                 <p>Thread: <span className="text-gray-300">{job.transcription_options?.threads ?? 'auto'}</span></p>
                 <p>Diarizzazione: <span className="text-gray-300">{diarizationStartLabel}</span></p>
+                <p>Assegnazione speaker: <span className="text-gray-300">{assignmentLabel}</span></p>
+                <p>Tempi parola: <span className="text-gray-300">{wordTimesLabel}</span></p>
                 <p>Device speaker: <span className="text-gray-300">{diarizationDeviceLabel}</span></p>
               </div>
             </details>
@@ -495,6 +735,7 @@ export default function TranscribePage() {
                 <Square size={13} /> Annulla
               </button>
             </div>
+            {job.transcription_backend === 'qwen3_asr' && <p className="text-xs text-amber-400">Pausa mantiene Qwen in RAM; Annulla libera memoria.</p>}
           </div>
         )}
 
@@ -508,12 +749,27 @@ export default function TranscribePage() {
           </div>
         )}
 
+        {(hasError || isCanceled) && job.qwen_resume_available && (
+          <div className="card p-4 space-y-2">
+            <p className="text-sm text-gray-300">Blocchi salvati fino a {formatDuration(job.qwen_resume_available.covered_seconds)}. Ripresa conserva trascrizione già completata.</p>
+            <button type="button" className="btn-primary" disabled={loading} onClick={handleResumeQwen}>
+              {loading ? 'Ripresa…' : 'Riprendi dai blocchi salvati'}
+            </button>
+          </div>
+        )}
+
         {hasError && (
           <div className="card p-6 flex items-start gap-3 text-red-300">
             <AlertTriangle size={20} className="flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-medium">Trascrizione fallita</p>
               <p className="text-sm text-red-400/80 mt-1">{job.error}</p>
+              {job.fallback_available && (fallbackModelReady
+                ? <button type="button" className="btn-primary mt-3" disabled={loading} onClick={handleRetryFaster}>Riprova con faster-whisper</button>
+                : <button type="button" className="btn-ghost mt-3" disabled={fallbackDownload !== null} onClick={handleDownloadFallback}>
+                    {fallbackDownload === null ? 'Scarica modello faster-whisper per riprovare' : `Download ${fallbackDownload}%`}
+                  </button>)}
+              {fallbackError && <p className="text-xs text-red-400 mt-2">{fallbackError}</p>}
             </div>
           </div>
         )}

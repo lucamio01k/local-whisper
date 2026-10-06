@@ -33,8 +33,8 @@ Opzioni principali di transcribe:
   --output CARTELLA             Directory finale; deve non esistere.
   --format FORMATO              Ripetibile: txt, srt, vtt, md, csv, json.
   --language CODICE             Lingua, ad es. it; omesso = rilevamento automatico.
-  --model MODELLO               tiny, base, small, medium, large-v2, large-v3, large-v3-turbo.
-  --backend BACKEND             faster_whisper oppure whisper_cpp.
+  --model MODELLO               Modelli Whisper oppure qwen3-asr-1.7b.
+  --backend BACKEND             faster_whisper, whisper_cpp oppure qwen3_asr.
   --profile PROFILO             fast, balanced oppure quality.
   --diarize / --no-diarize      Forza o disabilita speaker diarization.
   --speakers NUMERO             Numero speaker attesi, da 1 a 20.
@@ -56,8 +56,8 @@ Per tutte le opzioni: local-whisper transcribe --help""",
     transcribe.add_argument("--output", type=Path, help="Directory output finale")
     transcribe.add_argument("--format", dest="formats", choices=sorted(FORMATS), action="append", help="Formato export; ripetibile (default: txt)")
     transcribe.add_argument("--language", help="Codice lingua, es. it; omesso = rilevamento automatico")
-    transcribe.add_argument("--model", choices=("tiny", "base", "small", "medium", "large-v2", "large-v3", "large-v3-turbo"))
-    transcribe.add_argument("--backend", choices=("faster_whisper", "whisper_cpp"))
+    transcribe.add_argument("--model", choices=("tiny", "base", "small", "medium", "large-v2", "large-v3", "large-v3-turbo", "qwen3-asr-1.7b"))
+    transcribe.add_argument("--backend", choices=("faster_whisper", "whisper_cpp", "qwen3_asr"))
     transcribe.add_argument("--profile", choices=("fast", "balanced", "quality"))
     diarization = transcribe.add_mutually_exclusive_group()
     diarization.add_argument("--diarize", dest="diarize", action="store_true", help="Forza diarizzazione")

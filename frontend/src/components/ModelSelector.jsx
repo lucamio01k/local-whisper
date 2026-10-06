@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Download, CheckCircle, Loader, Info } from 'lucide-react'
-import { fetchModels, subscribeModelDownload } from '../api'
+import { fetchModelCatalog, subscribeModelDownload } from '../api'
 
 const MODEL_INFO = {
   'tiny':           { speed: 5, quality: 2 },
@@ -25,23 +25,26 @@ const SIZE_LABELS = {
   'large-v2': '3.1 GB', 'large-v3': '3.1 GB', 'large-v3-turbo': '800 MB',
 }
 
-export default function ModelSelector({ selected, onChange, onSelectedStatusChange, backend = 'faster_whisper' }) {
+function modelSize(model) {
+  return model.size_mb ? `${Math.round(model.size_mb)} MB` : SIZE_LABELS[model.name] || '—'
+}
+
+export default function ModelSelector({ selected, onChange, onSelectedStatusChange }) {
   const [models, setModels] = useState([])
-  const [loadedBackend, setLoadedBackend] = useState(null)
   const [downloading, setDownloading] = useState({})
   const [errors, setErrors] = useState({})
   const [showInfo, setShowInfo] = useState(false)
 
   useEffect(() => {
     let alive = true
-    fetchModels(backend).then(data => {
-      if (alive) { setModels(data); setLoadedBackend(backend) }
+    fetchModelCatalog().then(data => {
+      if (alive) setModels(data)
     }).catch(e => console.error(e))
     return () => { alive = false }
-  }, [backend])
+  }, [])
 
   useEffect(() => {
-    if (!models.length || loadedBackend !== backend) {
+    if (!models.length) {
       onSelectedStatusChange?.(false)
       return
     }
@@ -50,13 +53,9 @@ export default function ModelSelector({ selected, onChange, onSelectedStatusChan
     const isSelectedReady = Boolean(selectedModel?.downloaded)
     onSelectedStatusChange?.(isSelectedReady)
 
-    if (!isSelectedReady) {
-      const firstDownloaded = models.find(m => m.downloaded)
-      if (firstDownloaded) onChange(firstDownloaded.name)
-    }
-  }, [models, selected, onChange, onSelectedStatusChange, backend, loadedBackend])
+  }, [models, selected, onSelectedStatusChange])
 
-  function startDownload(modelName) {
+  function startDownload(modelName, backend) {
     setErrors(e => ({ ...e, [modelName]: null }))
     setDownloading(d => ({ ...d, [modelName]: 0 }))
 
@@ -87,7 +86,7 @@ export default function ModelSelector({ selected, onChange, onSelectedStatusChan
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <p className="label mb-0">Modello Whisper</p>
+        <p className="label mb-0">Modello trascrizione</p>
         <button
           onClick={() => setShowInfo(v => !v)}
           className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
@@ -109,27 +108,27 @@ export default function ModelSelector({ selected, onChange, onSelectedStatusChan
               </tr>
             </thead>
             <tbody>
-              {models.map((m, i) => {
+              {models.map((m) => {
                 const info = MODEL_INFO[m.name]
                 return (
                   <tr
                     key={m.name}
                     onClick={() => m.downloaded && onChange(m.name)}
                     className={`border-t border-white/5 transition-colors ${
-                      m.downloaded ? 'cursor-pointer hover:bg-white/3' : 'opacity-50'
+                      m.downloaded ? 'cursor-pointer hover:bg-white/3' : m.reference ? '' : 'opacity-50'
                     } ${selected === m.name ? 'bg-brand-900/20' : ''}`}
                   >
                     <td className="px-3 py-2 font-mono font-medium text-gray-200">{m.name}</td>
-                    <td className="px-3 py-2 text-right text-gray-400">{SIZE_LABELS[m.name]}</td>
-                    <td className="px-3 py-2 text-center"><Stars n={info?.speed ?? 0} /></td>
-                    <td className="px-3 py-2 text-center"><Stars n={info?.quality ?? 0} /></td>
+                    <td className="px-3 py-2 text-right text-gray-400">{modelSize(m)}</td>
+                    <td className="px-3 py-2 text-center">{m.name === 'qwen3-asr-1.7b' ? 'Da misurare' : <Stars n={info?.speed ?? 0} />}</td>
+                    <td className="px-3 py-2 text-center">{m.name === 'qwen3-asr-1.7b' ? 'Alta potenziale*' : <Stars n={info?.quality ?? 0} />}</td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
           <p className="px-3 py-2 text-gray-600 bg-gray-900/60 border-t border-white/5">
-            💡 <strong className="text-gray-500">large-v3-turbo</strong> = modello rapido; qualità da confrontare sui propri audio.
+            💡 Turbo è riferimento rapido; v3 è più lento. Qwen: accuratezza potenzialmente alta, da verificare sui propri audio; velocità da misurare su questo Mac.
           </p>
         </div>
       )}
@@ -164,7 +163,7 @@ export default function ModelSelector({ selected, onChange, onSelectedStatusChan
                   )}
                   <span className="font-mono text-sm font-medium text-gray-200 truncate">{m.name}</span>
                 </div>
-                <span className="text-xs text-gray-500 flex-shrink-0">{SIZE_LABELS[m.name]}</span>
+                  <span className="text-xs text-gray-500 flex-shrink-0">{modelSize(m)}</span>
               </div>
 
               {/* Download progress bar */}
@@ -183,14 +182,15 @@ export default function ModelSelector({ selected, onChange, onSelectedStatusChan
               {err && <p className="text-xs text-red-400 mt-1">{err}</p>}
 
               {/* Download button */}
-              {!m.downloaded && !isDl && (
+              {!m.downloaded && !isDl && m.supported !== false && (
                 <button
-                  onClick={(e) => { e.stopPropagation(); startDownload(m.name) }}
+                  onClick={(e) => { e.stopPropagation(); startDownload(m.name, m.backend) }}
                   className="mt-2 text-xs text-brand-400 hover:text-brand-300 font-medium flex items-center gap-1"
                 >
                   <Download size={12} /> Scarica
                 </button>
               )}
+              {m.supported === false && <p className="text-xs text-amber-400 mt-1">Richiede Mac Apple Silicon.</p>}
 
               {selected === m.name && m.downloaded && (
                 <span className="absolute top-1.5 right-1.5 text-[10px] font-semibold text-brand-400 bg-brand-900/60 px-1.5 py-0.5 rounded">

@@ -12,6 +12,7 @@ def run_file(request: dict, work_dir: Path, progress, context) -> dict:
     ``work_dir`` for this process, so no audio, transcript, token, or history is
     persisted in the normal uploads directory. This module has no FastAPI import.
     """
+    context._validate_model_name(request["model"], request["transcription_backend"])
     work_dir.mkdir(parents=True, exist_ok=True)
     job_id = uuid.uuid4().hex
     previous_upload_dir = context.UPLOAD_DIR

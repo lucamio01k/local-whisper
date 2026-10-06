@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { Upload, Youtube, X, FileAudio, Loader, Info } from 'lucide-react'
 import { getYouTubeInfo } from '../api'
 
-const ACCEPTED = '.mp3,.wav,.m4a,.mp4,.mov,.ogg,.opus,.webm'
+const ACCEPTED = '.mp3,.wav,.m4a,.mp4,.mov,.mpeg,.mpg,.ogg,.opus,.webm'
 
 export default function FileUpload({ onFile, onYouTube }) {
   const [mode, setMode] = useState('file') // 'file' | 'youtube'

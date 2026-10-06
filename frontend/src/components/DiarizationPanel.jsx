@@ -63,7 +63,7 @@ export default function DiarizationPanel({
             <select id="diarization-precision" className="input w-full" value={precision} onChange={e => onPrecisionChange(e.target.value)}>
               <option value="segments">Per segmento</option><option value="words">Per parola · sperimentale</option>
             </select>
-            <p className="text-xs text-gray-400 mt-1.5">{precision === 'words' ? 'Può separare cambi di persona dentro una frase. Richiede tempi parola utilizzabili; altrimenti conserva il segmento. Consigliato profilo Qualità nelle opzioni di trascrizione.' : 'Assegna ogni segmento di testo a una persona.'}</p>
+            <p className="text-xs text-gray-400 mt-1.5">{precision === 'words' ? 'Attribuisce uno speaker a ogni parola, anche quando cambia dentro un segmento. Attiva i tempi parola necessari per questo job; se non sono utilizzabili, conserva il segmento.' : 'Attribuisce un solo speaker a ogni segmento. Puoi comunque usare i tempi parola per la trascrizione.'}</p>
           </div>
           {speakerMode === 'auto' && <fieldset className="space-y-2">
             <legend className="label">Limiti del rilevamento</legend>

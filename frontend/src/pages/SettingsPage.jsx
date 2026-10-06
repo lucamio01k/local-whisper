@@ -10,25 +10,13 @@ const WHISPER_MODELS = [
   { id: 'large-v2', label: 'Large v2' },
   { id: 'large-v3', label: 'Large v3' },
   { id: 'large-v3-turbo', label: 'Large v3 Turbo' },
+  { id: 'qwen3-asr-1.7b', label: 'Qwen3-ASR 1.7B (MLX)' },
 ]
 
 const PERFORMANCE_PROFILES = [
   { id: 'fast', label: 'Veloce', desc: 'beam 1, senza timestamp parola' },
   { id: 'balanced', label: 'Bilanciato', desc: 'beam 3, senza timestamp parola' },
   { id: 'quality', label: 'Qualità', desc: 'beam 5, timestamp parola attivi' },
-]
-
-const TRANSCRIPTION_BACKENDS = [
-  {
-    id: 'faster_whisper',
-    label: 'faster-whisper',
-    desc: 'Stabile, usa CPU su Apple Silicon',
-  },
-  {
-    id: 'whisper_cpp',
-    label: 'whisper.cpp',
-    desc: 'Usa Metal/Core ML, richiede whisper-cli e modelli GGML',
-  },
 ]
 
 const DIARIZATION_START_MODES = [
@@ -47,7 +35,7 @@ export default function SettingsPage() {
   const [cfg, setCfg] = useState({
     hf_token: '',
     default_model: 'small',
-    transcription_backend: 'faster_whisper',
+    whisper_backend_preference: 'auto',
     performance_profile: 'balanced',
     diarization_enabled: true,
     diarization_start: 'auto',
@@ -155,21 +143,7 @@ export default function SettingsPage() {
 <div className="card p-6 space-y-4">
 <h2 className="font-semibold text-gray-200">Trascrizione</h2>
 <div>
-<label className="label">Backend trascrizione</label>
-<select
-className="input"
-value={cfg.transcription_backend || 'faster_whisper'}
-onChange={(e) => setCfg(c => ({ ...c, transcription_backend: e.target.value }))}
->
-{TRANSCRIPTION_BACKENDS.map(backend => (
-<option key={backend.id} value={backend.id}>
-{backend.label} - {backend.desc}
-</option>
-))}
-</select>
-</div>
-<div>
-<label className="label">Modello Whisper predefinito</label>
+<label className="label">Modello predefinito</label>
           <select
             className="input"
             value={cfg.default_model || 'small'}
@@ -180,14 +154,28 @@ onChange={(e) => setCfg(c => ({ ...c, transcription_backend: e.target.value }))}
             ))}
           </select>
         </div>
+        <details className="rounded-lg border border-white/10 p-3">
+          <summary className="cursor-pointer text-sm text-gray-300">Avanzate: motore Whisper</summary>
+          <label className="label mt-3">Motore per modelli Whisper</label>
+          <select className="input" value={cfg.whisper_backend_preference || 'auto'}
+            onChange={e => setCfg(c => ({ ...c, whisper_backend_preference: e.target.value }))}>
+            <option value="auto">Automatico (consigliato)</option>
+            <option value="whisper_cpp">whisper.cpp</option>
+            <option value="faster_whisper">faster-whisper</option>
+          </select>
+          <p className="text-xs text-gray-400 mt-2">Sul tuo Mac whisper.cpp usa Metal ed è risultato più veloce nei test locali. faster-whisper usa CPU come alternativa. Qwen usa sempre MLX.</p>
+        </details>
         <div>
-          <label className="label">Profilo prestazioni</label>
+          <label className="label">{cfg.default_model === 'qwen3-asr-1.7b' ? 'Tempi parola Qwen' : 'Profilo prestazioni Whisper'}</label>
           <select
             className="input"
-            value={cfg.performance_profile || 'balanced'}
+            value={cfg.default_model === 'qwen3-asr-1.7b' && cfg.performance_profile !== 'quality' ? 'balanced' : cfg.performance_profile || 'balanced'}
             onChange={(e) => setCfg(c => ({ ...c, performance_profile: e.target.value }))}
           >
-            {PERFORMANCE_PROFILES.map(profile => (
+            {(cfg.default_model === 'qwen3-asr-1.7b' ? [
+              { id: 'balanced', label: 'Senza allineamento parola', desc: 'salvo se diarizzazione Per parola' },
+              { id: 'quality', label: 'Con allineamento parola', desc: 'il testo riconosciuto non cambia' },
+            ] : PERFORMANCE_PROFILES).map(profile => (
               <option key={profile.id} value={profile.id}>
                 {profile.label} - {profile.desc}
               </option>

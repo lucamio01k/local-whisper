@@ -176,6 +176,8 @@ function JobCard({ job, onUpdated, onDeleted }) {
                   {job.status === 'paused' ? 'In pausa' : `${job.progress || 0}%`}
                 </span>
               )}
+              {job.status === 'error' && <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-red-900/40 text-red-300"><AlertTriangle size={10} /> Errore</span>}
+              {job.status === 'canceled' && <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">Annullata</span>}
               <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${
                 job.has_audio ? 'bg-blue-900/40 text-blue-300' : 'bg-gray-800 text-gray-600 line-through'
               }`}>

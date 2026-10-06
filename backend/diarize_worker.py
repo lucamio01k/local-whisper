@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import sys
+import traceback
 from pathlib import Path
 from backend.storage import atomic_json
 
@@ -18,7 +19,7 @@ def main():
         return 0
     except Exception as exc:
         atomic_json(args.output, {'ok': False, 'error': str(exc)})
-        print(str(exc), file=sys.stderr)
+        traceback.print_exc()
         return 1
 
 

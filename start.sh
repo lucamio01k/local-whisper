@@ -35,7 +35,7 @@ wait_for_url() {
   local label="$2"
   local attempt
   for attempt in {1..40}; do
-    if curl --silent --fail --output /dev/null "$url"; then
+    if curl --silent --fail --max-time 1 --output /dev/null "$url"; then
       return 0
     fi
     sleep 0.25
@@ -55,6 +55,17 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 if lsof -nP -iTCP:5173 -sTCP:LISTEN >/dev/null 2>&1; then
+  for listener_pid in $(lsof -tiTCP:5173 -sTCP:LISTEN); do
+    listener_dir="$(lsof -a -p "$listener_pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')"
+    case "$listener_dir" in
+      "$ROOT"|"$ROOT/"*) ;;
+      *) error "Porta 5173 occupata da processo esterno (PID $listener_pid)."; exit 1 ;;
+    esac
+  done
+  if ! curl --silent --fail --max-time 1 --output /dev/null http://127.0.0.1:8000/api/health; then
+    error "Frontend attivo ma backend non disponibile. Esegui $ROOT/restart.sh"
+    exit 1
+  fi
   info "Local Whisper e gia in esecuzione: apro il browser."
   if [[ "${LOCAL_WHISPER_NO_BROWSER:-0}" != "1" ]]; then
     open "$APP_URL"

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from backend.quality import assign_speakers, PIPELINE_VERSION
 from backend.storage import atomic_json, digest_file
+from backend.diarization_progress import DiarizationProgress
 import hashlib
 import json
 import importlib.metadata
@@ -63,6 +64,7 @@ def infer_turns(
     diarization_device: str = DEFAULT_DIARIZATION_DEVICE,
     min_speakers=None,
     max_speakers=None,
+    progress=None,
 ) -> dict:
     # pyannote checkpoints currently require the legacy torch.load behavior on
     # PyTorch >= 2.6. This is limited to the trusted pyannote models requested
@@ -78,6 +80,8 @@ def infer_turns(
     # Model selection is explicit; do not silently change it.
 
     started = time.monotonic()
+    if progress:
+        progress.report('loading')
     pipeline = None
     load_errors = []
     for model_id in model_ids:
@@ -131,6 +135,9 @@ def infer_turns(
 
     # Passing preloaded audio bypasses pyannote's TorchCodec decoder. TorchCodec
     # currently cannot load against some newer Homebrew FFmpeg releases.
+    if progress:
+        progress.report('preparing')
+        pipeline_kwargs['hook'] = progress
     diarization_audio = _load_diarization_waveform(audio_path)
     diarization = pipeline(diarization_audio, **pipeline_kwargs)
     def tracks(annotation):
@@ -167,6 +174,8 @@ def cache_signature(audio, model, device, expected=None, minimum=None, maximum=N
 
 
 def run(payload, token):
+    progress = DiarizationProgress(payload.get('progress_path'))
+    progress.report('preparing')
     audio = payload['audio_path']
     segments = json.loads(Path(payload['segments_path']).read_text())
     model, device = payload.get('diarization_model', 'community-1'), payload.get('diarization_device', 'auto')
@@ -182,11 +191,14 @@ def run(payload, token):
     if cached:
         turns = json.loads(cache_path.read_text())
     else:
-        turns = infer_turns(audio, [], token, expected, model, payload.get('diarization_mode', 'conservative'), device, minimum, maximum)
+        turns = infer_turns(audio, [], token, expected, model, payload.get('diarization_mode', 'conservative'), device, minimum, maximum,
+                            progress=progress if progress.path else None)
         key, signature = cache_signature(audio, model, device, expected, minimum, maximum)
         turns['signature'] = signature
         atomic_json(cache_dir / (key + '.json'), turns)
     started = time.monotonic()
+    progress.report('assignment')
     result = assign_speakers(segments, turns['standard'], turns['exclusive'], payload.get('diarization_precision', 'segments'))
+    progress.report('done', total=1, completed=1)
     return {"ok": True, "segments": result, "turns": turns, "cache_hit": cached,
             "assignment_seconds": time.monotonic() - started, "cache_key": key}

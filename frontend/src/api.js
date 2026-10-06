@@ -6,6 +6,12 @@ export async function fetchModels(backend = 'faster_whisper') {
   return r.json()
 }
 
+export async function fetchModelCatalog() {
+  const r = await fetch(`${BASE}/model-catalog`)
+  if (!r.ok) throw new Error('Errore caricamento modelli')
+  return r.json()
+}
+
 export async function fetchConfig() {
   const r = await fetch(`${BASE}/config`)
   if (!r.ok) throw new Error('Errore config')
@@ -80,6 +86,15 @@ export async function getJob(jobId) {
   return r.json()
 }
 
+export async function retryWithFasterWhisper(jobId) {
+  const r = await fetch(`${BASE}/jobs/${jobId}/retry-faster-whisper`, { method: 'POST' })
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}))
+    throw new Error(err.detail || 'Errore riprova')
+  }
+  return r.json()
+}
+
 export async function pauseJob(jobId) {
   const r = await fetch(`${BASE}/jobs/${jobId}/pause`, { method: 'POST' })
   if (!r.ok) {
@@ -94,6 +109,15 @@ export async function resumeJob(jobId) {
   if (!r.ok) {
     const err = await r.json().catch(() => ({}))
     throw new Error(err.detail || 'Errore ripresa job')
+  }
+  return r.json()
+}
+
+export async function resumeQwenJob(jobId) {
+  const r = await fetch(`${BASE}/jobs/${jobId}/resume-qwen`, { method: 'POST' })
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}))
+    throw new Error(err.detail || 'Errore ripresa Qwen')
   }
   return r.json()
 }

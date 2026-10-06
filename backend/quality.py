@@ -109,21 +109,36 @@ def assign_speakers(segments, standard, exclusive=None, precision='words'):
     for source in segments:
         seg = copy.deepcopy(source)
         words = seg.get('words') or []
-        aligned = precision == 'words' and words and all(valid_interval(w) and not w.get('timing_issue') for w in words)
+        joined = ''.join(w.get('word', '') for w in words).strip()
+        spaced = ' '.join(w.get('word', '').strip() for w in words).strip()
+        separator = '' if joined == seg.get('text', '').strip() else ' '
+        aligned = (precision == 'words' and words
+                   and (joined == seg.get('text', '').strip() or spaced == seg.get('text', '').strip())
+                   and any(valid_interval(w) and not w.get('timing_issue') for w in words))
         if aligned:
             groups = []
-            for word in words:
-                raw = speaker_for(word['start'], word['end'], turns)
+            valid = [valid_interval(w) and not w.get('timing_issue') for w in words]
+            anchors = [(i, speaker_for(w['start'], w['end'], turns)) for i, w in enumerate(words) if valid[i]]
+            for index, word in enumerate(words):
+                if valid[index]:
+                    raw = speaker_for(word['start'], word['end'], turns)
+                else:
+                    word['timing_issue'] = True
+                    nearest = min(anchors, key=lambda item: abs(item[0] - index))
+                    raw = nearest[1]
                 word['speaker'] = labels.get(raw)
-                word['speaker_candidates'] = [labels[sp] for sp in candidates(word['start'], word['end'], turns)]
-                word['overlap'] = has_overlap(word['start'], word['end'], standard)
+                word['speaker_candidates'] = [labels[sp] for sp in candidates(word['start'], word['end'], turns)] if valid[index] else []
+                word['overlap'] = has_overlap(word['start'], word['end'], standard) if valid[index] else False
                 if groups and groups[-1]['speaker'] == word['speaker']:
                     groups[-1]['words'].append(word)
-                    groups[-1]['end'] = word['end']
+                    if valid[index]:
+                        groups[-1]['end'] = word['end']
                 else:
                     groups.append({'start': word['start'], 'end': word['end'], 'speaker': word['speaker'], 'words': [word]})
             for group in groups:
-                group['text'] = ''.join(w['word'] for w in group['words'])
+                group['text'] = separator.join(w['word'] for w in group['words'])
+                if separator:
+                    group['text'] = group['text'].strip()
                 group['source_segment_id'] = source.get('id')
                 result.append(group)
         else:

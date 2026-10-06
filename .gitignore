@@ -8,6 +8,7 @@ config.json
 
 # Python
 .venv/
+.venv-qwen/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -32,6 +33,9 @@ tests/audio/
 *.ogg
 *.opus
 *.webm
+*.mpeg
+*.mpg
+local-whisper-output/
 
 # CCE (code-context-engine)
 # CCE local cache (per-machine, not for version control)
@@ -44,3 +48,4 @@ tests/audio/
 # Local evaluation artifacts (audio-derived content and model logs)
 reports/evaluation-v1/
 reports/implementation-checks/
+reports/qwen-resources-*/
