@@ -1,0 +1,5 @@
+{
+  "pipeline": {"model": "large-v3-turbo", "diarization_precision": "words", "performance_profile": "quality", "diarization_device": "auto", "language": "en"},
+  "parameters": {"ambiguity_margin": 0.15, "acoustic_confidence": 0.75, "semantic_confidence": 0.9, "change_confidence": 0.85, "decision_margin": 0.15, "context_turns": 2, "audio_window": 3.0, "min_audio": 1.5},
+  "notes": "Paired local gold subset; development/tuning meetings disjoint from evaluation."
+}

@@ -1,0 +1,3 @@
+# Optional semantic environment only; never added to standard requirements.
+# SDK API verified against 0.3.28. Model scores require domain calibration.
+laya==0.3.28

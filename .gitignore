@@ -49,3 +49,5 @@ local-whisper-output/
 reports/evaluation-v1/
 reports/implementation-checks/
 reports/qwen-resources-*/
+lab-data/
+.venv-lab/

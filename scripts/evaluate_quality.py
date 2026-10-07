@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from backend.storage import atomic_json, digest_file
 from backend.quality import cpp_words, cpp_time, assign_speakers, diagnostics
+from backend.lab_metrics import normalized, edit_distance
 
 SOURCES = {'lesson': ROOT/'uploads/b12cfe14-e01a-41a6-afac-d18c31eb7046/audio.mp3',
            'meeting': ROOT/'uploads/dc48742f-baa9-44d6-b0cb-0ddb737ea9ba/audio.mp3'}
@@ -119,19 +120,6 @@ def diarize_matrix(out,manifest):
                 result=assign_speakers(raw,turns['standard'],turns['exclusive'],'words')
             atomic_json(path.parent/'diarized.json',result)
         print('diarized',sample['id'],flush=True)
-
-
-def normalized(text):
-    return re.findall(r'\w+',text.lower())
-
-
-def edit_distance(a,b):
-    row=list(range(len(b)+1))
-    for i,x in enumerate(a,1):
-        nxt=[i]
-        for j,y in enumerate(b,1): nxt.append(min(nxt[-1]+1,row[j]+1,row[j-1]+(x!=y)))
-        row=nxt
-    return row[-1]
 
 
 def score(out,manifest):

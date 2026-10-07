@@ -681,6 +681,16 @@ def heavy_job(function):
             if job.get('cancel_requested'):
                 job.update(status='done' if previous else 'canceled', stage='canceled', cancelable=False)
                 return
+            # API and standalone Lab CLI share same process gate. Isolated ASR/
+            # diarization children already run under parent supervisor ownership.
+            if os.environ.get('LOCAL_WHISPER_LAB_WORKER') != '1' or job_id.startswith('lab-'):
+                from backend.lab_sources import heavy_gate
+                from backend.lab import LAB_DIR
+                with heavy_gate(LAB_DIR, job, job_id) as acquired:
+                    if not acquired:
+                        job.update(status='done' if previous else 'canceled', stage='canceled', cancelable=False)
+                        return
+                    return function(job_id, *args, **kwargs)
             return function(job_id, *args, **kwargs)
         finally:
             if job.get('status') in ('error', 'canceled') and previous:
@@ -692,8 +702,9 @@ def heavy_job(function):
     return queued
 
 
-# Load persisted jobs at startup
-load_jobs_from_disk()
+# Isolated Lab workers must not load normal history.
+if os.environ.get('LOCAL_WHISPER_LAB_WORKER') != '1':
+    load_jobs_from_disk()
 
 
 # ── Diarization helper (reusable) ─────────────────────────────────────────────
@@ -777,6 +788,7 @@ def _run_diarization_worker(
         "min_speakers": job.get("min_speakers"),
         "max_speakers": job.get("max_speakers"),
         "progress_path": str(progress_path),
+        **({"lab_refinement": job["lab_refinement_request"]} if job.get("lab_refinement_request") else {}),
     }, ensure_ascii=False))
     result_path.unlink(missing_ok=True)
 
@@ -856,6 +868,8 @@ def _run_diarization_worker(
                 detail = result.get("error") or _tail_text(stderr_path) or "Diarizzazione fallita"
                 raise RuntimeError(detail)
             job["turns"] = result.get("turns")
+            if "lab_refinement" in result:
+                job["lab_refinement"] = result["lab_refinement"]
             job["diarization_cache_key"] = result.get("cache_key")
             job.setdefault("metrics", {}).update({
                 "diarization_cache_hit": result.get("cache_hit", False),
@@ -973,7 +987,7 @@ def _run_whisper_cpp(
 
     progress("transcribing", 8, "Preparazione audio per whisper.cpp…")
     wav_path = _prepare_whisper_cpp_audio(job_id, audio_path)
-    threads = max(1, min((os.cpu_count() or 4), 8))
+    threads = max(1, min((os.cpu_count() or 4), int(os.environ.get("LOCAL_WHISPER_LAB_THREADS", 8))))
     cmd = [
         str(binary),
         "-m",
@@ -2456,3 +2470,6 @@ def _check_edit_version(job_id, version, required=True):
 
 from backend.review import register_review_routes
 register_review_routes(app, sys.modules[__name__])
+if os.environ.get('LOCAL_WHISPER_LAB_WORKER') != '1':
+    from backend.lab import register_lab_routes
+    register_lab_routes(app, sys.modules[__name__])

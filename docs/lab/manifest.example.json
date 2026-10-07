@@ -1,0 +1,7 @@
+{
+  "corpus": "Selected local subset",
+  "samples": [
+    {"id": "meeting-headset", "audio": "audio/meeting-headset.wav", "reference": "gold/meeting.json", "scenario": "EN clean meeting", "channel": "headset-mix"},
+    {"id": "meeting-array", "audio": "audio/meeting-array.wav", "reference": "gold/meeting.json", "scenario": "EN far-field meeting", "channel": "Array1-01"}
+  ]
+}

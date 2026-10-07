@@ -65,6 +65,7 @@ def infer_turns(
     min_speakers=None,
     max_speakers=None,
     progress=None,
+    lab_refinement=None,
 ) -> dict:
     # pyannote checkpoints currently require the legacy torch.load behavior on
     # PyTorch >= 2.6. This is limited to the trusted pyannote models requested
@@ -73,6 +74,8 @@ def infer_turns(
 
     from pyannote.audio import Pipeline
     import torch
+    if os.environ.get("LOCAL_WHISPER_LAB_THREADS"):
+        torch.set_num_threads(int(os.environ["LOCAL_WHISPER_LAB_THREADS"]))
 
     model_key = diarization_model if diarization_model in DIARIZATION_MODELS else DEFAULT_DIARIZATION_MODEL
     model_ids = [DIARIZATION_MODELS[model_key]]
@@ -157,9 +160,34 @@ def infer_turns(
     )
 
     exclusive = getattr(diarization, "exclusive_speaker_diarization", None)
-    return {"standard": turns, "exclusive": tracks(exclusive) if exclusive is not None else None,
+    result = {"standard": turns, "exclusive": tracks(exclusive) if exclusive is not None else None,
             "model": model_id, "device": str(pipeline.device), "load_seconds": load_seconds,
             "inference_seconds": time.monotonic() - started - load_seconds}
+    if lab_refinement:
+        from backend.refinement import AcousticSpeakerResolver, RefinementConfig, labeled_turns, refine
+        config = RefinementConfig(**lab_refinement.get('parameters', {}))
+        baseline = assign_speakers(segments, result['standard'], result['exclusive'], lab_refinement.get('precision', 'segments'))
+        labeled, labels = labeled_turns(result)
+        refined_started = time.monotonic()
+        embeddings = getattr(diarization, 'speaker_embeddings', None)
+        encoder = getattr(pipeline, '_embedding', None)
+        if embeddings is None or encoder is None or encoder.sample_rate != diarization_audio['sample_rate']:
+            result['lab_refinement'] = {'segments': baseline, 'decisions': [], 'status': 'unavailable',
+                                        'error': 'Community-1 embeddings/encoder API unavailable'}
+        else:
+            try:
+                annotation = getattr(diarization, 'speaker_diarization', diarization)
+                centroids = {labels.get(s, s): embeddings[i] for i, s in enumerate(annotation.labels())}
+                resolver = AcousticSpeakerResolver(encoder, centroids, diarization_audio['waveform'],
+                                                   diarization_audio['sample_rate'], config)
+                refined, decisions = refine(baseline, labeled, resolver, config)
+                result['lab_refinement'] = {'segments': refined, 'decisions': decisions,
+                    'status': 'degraded' if any(d['reason'] == 'refiner_failed' for d in decisions) else 'done'}
+            except Exception as exc:
+                result['lab_refinement'] = {'segments': baseline, 'decisions': [], 'status': 'degraded',
+                                            'error': f'Acoustic adapter failed: {exc}'}
+        result['lab_refinement']['seconds'] = time.monotonic() - refined_started
+    return result
 
 def cache_signature(audio, model, device, expected=None, minimum=None, maximum=None):
     from huggingface_hub.constants import HF_HUB_CACHE
@@ -187,18 +215,21 @@ def run(payload, token):
     key, signature = cache_signature(audio, model, device, expected, minimum, maximum)
     cache_dir = Path(audio).parent / 'turns_cache'
     cache_path = cache_dir / (key + '.json')
-    cached = cache_path.exists()
+    cached = cache_path.exists() and not payload.get('lab_refinement') and not payload.get('lab_cold')
     if cached:
         turns = json.loads(cache_path.read_text())
     else:
-        turns = infer_turns(audio, [], token, expected, model, payload.get('diarization_mode', 'conservative'), device, minimum, maximum,
-                            progress=progress if progress.path else None)
+        extra = {'lab_refinement': payload['lab_refinement']} if payload.get('lab_refinement') else {}
+        turns = infer_turns(audio, segments, token, expected, model, payload.get('diarization_mode', 'conservative'), device, minimum, maximum,
+                            progress=progress if progress.path else None, **extra)
         key, signature = cache_signature(audio, model, device, expected, minimum, maximum)
         turns['signature'] = signature
-        atomic_json(cache_dir / (key + '.json'), turns)
+        atomic_json(cache_dir / (key + '.json'), {k: v for k, v in turns.items() if k != 'lab_refinement'})
+    lab_result = turns.pop('lab_refinement', None)
     started = time.monotonic()
     progress.report('assignment')
     result = assign_speakers(segments, turns['standard'], turns['exclusive'], payload.get('diarization_precision', 'segments'))
     progress.report('done', total=1, completed=1)
     return {"ok": True, "segments": result, "turns": turns, "cache_hit": cached,
-            "assignment_seconds": time.monotonic() - started, "cache_key": key}
+            "assignment_seconds": time.monotonic() - started, "cache_key": key,
+            **({'lab_refinement': lab_result} if lab_result is not None else {})}

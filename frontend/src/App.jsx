@@ -1,13 +1,15 @@
 import { Routes, Route, NavLink } from 'react-router-dom'
-import { Mic, Clock, Settings } from 'lucide-react'
+import { Mic, Clock, Settings, FlaskConical } from 'lucide-react'
 import TranscribePage from './pages/TranscribePage'
 import HistoryPage from './pages/HistoryPage'
 import SettingsPage from './pages/SettingsPage'
+import LabPage from './pages/LabPage'
 
 const NAV = [
   { to: '/',         label: 'Trascrivi', Icon: Mic,      end: true },
   { to: '/history',  label: 'Archivio',  Icon: Clock,    end: false },
   { to: '/settings', label: 'Impostazioni', Icon: Settings, end: false },
+  { to: '/lab', label: 'Lab', Icon: FlaskConical, end: false },
 ]
 
 export default function App() {
@@ -17,7 +19,7 @@ export default function App() {
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <span className="text-brand-500 text-xl">🎙️</span>
-            <span className="font-semibold text-white tracking-tight">Local Whisper</span>
+            <span className="font-semibold text-white tracking-tight whitespace-nowrap">Local Whisper</span>
           </div>
           <nav className="flex items-center gap-1">
             {NAV.map(({ to, label, Icon, end }) => (
@@ -25,14 +27,15 @@ export default function App() {
                 key={to}
                 to={to}
                 end={end}
+                aria-label={label}
                 className={({ isActive }) =>
-                  `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                  `flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-sm transition-colors ${
                     isActive ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'
                   }`
                 }
               >
                 <Icon size={15} />
-                {label}
+                <span className="hidden sm:inline">{label}</span>
               </NavLink>
             ))}
           </nav>
@@ -44,6 +47,7 @@ export default function App() {
           <Route path="/" element={<TranscribePage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/lab" element={<LabPage />} />
         </Routes>
       </main>
     </div>

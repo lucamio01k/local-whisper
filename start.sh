@@ -34,13 +34,13 @@ wait_for_url() {
   local url="$1"
   local label="$2"
   local attempt
-  for attempt in {1..40}; do
+  for ((attempt=0; attempt<${LOCAL_WHISPER_START_CHECKS:-120}; attempt++)); do
     if curl --silent --fail --max-time 1 --output /dev/null "$url"; then
       return 0
     fi
     sleep 0.25
   done
-  error "$label non ha risposto entro 10 secondi. Controlla i log in $LOG_DIR."
+  error "$label non ha risposto entro attesa avvio. Controlla i log in $LOG_DIR."
   return 1
 }
 

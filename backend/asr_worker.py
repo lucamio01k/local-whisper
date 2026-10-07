@@ -1,5 +1,6 @@
 """One-job faster-whisper process; never imports FastAPI or history."""
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -9,8 +10,9 @@ from backend.storage import atomic_json
 def run(request, output):
     from faster_whisper import WhisperModel
     started = time.monotonic()
+    thread_settings = {'cpu_threads':int(os.environ['LOCAL_WHISPER_LAB_THREADS'])} if os.environ.get('LOCAL_WHISPER_LAB_THREADS') else {}
     model = WhisperModel(request['model'], device=request['device'],
-                         compute_type=request['compute_type'], download_root=request['models_dir'])
+                         compute_type=request['compute_type'], download_root=request['models_dir'], **thread_settings)
     loaded = time.monotonic()
     iterator, info = model.transcribe(request['audio'], language=request.get('language'),
         initial_prompt=request.get('glossary') or None, beam_size=request['beam_size'],

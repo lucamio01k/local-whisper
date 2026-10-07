@@ -27,6 +27,8 @@ def run_file(request: dict, work_dir: Path, progress, context) -> dict:
             "min_speakers": None, "max_speakers": None,
         }
         context._set_job_control_defaults(context.jobs[job_id])
+        if request.get('lab_refinement'):
+            context.jobs[job_id]['lab_refinement_request'] = request['lab_refinement']
         context._run_transcription(
             job_id, request["audio_path"], request["model"], request.get("language"),
             request["diarize"], request.get("hf_token", ""), request.get("expected_speakers"),
@@ -45,6 +47,8 @@ def run_file(request: dict, work_dir: Path, progress, context) -> dict:
             "metrics": copy.deepcopy(job.get("metrics", {})),
             "diarization_ran": bool(job.get("diarization_ran")),
             "diarization_error": job.get("diarization_error"),
+            **({"turns": copy.deepcopy(job.get("turns")),
+                "lab_refinement": copy.deepcopy(job.get("lab_refinement"))} if request.get('lab') else {}),
         }
     finally:
         context.jobs.pop(job_id, None)

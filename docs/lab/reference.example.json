@@ -1,0 +1,11 @@
+{
+  "verified": false,
+  "text": "Ciao. Va bene.",
+  "turns": [[0.2, 1.0, "A"], [1.2, 2.4, "B"]],
+  "words": [
+    {"word": "Ciao.", "start": 0.2, "end": 1.0, "speaker": "A"},
+    {"word": "Va", "start": 1.2, "end": 1.6, "speaker": "B"},
+    {"word": "bene.", "start": 1.6, "end": 2.4, "speaker": "B"}
+  ],
+  "uem": [[0.0, 3.0]]
+}
